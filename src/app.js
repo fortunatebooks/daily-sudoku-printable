@@ -1,5 +1,10 @@
 import { getCachedWeather, loadWeather } from './weather.js';
-import { getCachedTvListings, loadTvListings, unavailableTvListings } from './tv-listings.js';
+import {
+  formatTvDisplayTime,
+  getCachedTvListings,
+  loadTvListings,
+  unavailableTvListings
+} from './tv-listings.js';
 
 const PUZZLE_EXPORTS = [
   'getPuzzleForDate',
@@ -455,7 +460,7 @@ function renderTvListings(tvListings) {
   title.textContent = 'Tonight on TV';
 
   const meta = document.createElement('p');
-  meta.textContent = `${tvListings.windowLabel || '19:00-23:00'} - ${tvListings.sourceLabel || 'TV: Freely'}`;
+  meta.textContent = tvListings.windowLabel || '19:00-23:00';
 
   header.append(title, meta);
 
@@ -481,7 +486,7 @@ function renderTvListings(tvListings) {
       programs.forEach((program) => {
         const item = document.createElement('li');
         const time = document.createElement('time');
-        time.textContent = program.startTime;
+        time.textContent = formatTvDisplayTime(program.startTime) || program.startTime;
         const name = document.createElement('span');
         name.textContent = program.title;
         item.append(time, name);
@@ -509,11 +514,7 @@ function renderTvListingsUnavailable(dateIso) {
   message.className = 'tv-listings-unavailable';
   message.textContent = 'Tonight\'s TV listings are unavailable right now.';
 
-  const attribution = document.createElement('p');
-  attribution.className = 'tv-listings-attribution';
-  attribution.textContent = 'TV: Freely';
-
-  elements.tvListings.append(message, attribution);
+  elements.tvListings.append(message);
 }
 
 function appendWeatherDetail(parent, term, description) {

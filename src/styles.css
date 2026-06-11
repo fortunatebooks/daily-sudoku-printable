@@ -44,7 +44,7 @@ button {
 }
 
 .app-shell {
-  width: min(100% - 32px, 920px);
+  width: min(100% - 32px, 1120px);
   min-height: 100vh;
   margin: 0 auto;
   padding: 24px 0 32px;
@@ -119,12 +119,12 @@ button {
 }
 
 .puzzle-section {
-  width: min(100%, 760px);
+  width: min(100%, 700px);
   margin: 0 auto;
 }
 
 .sudoku-grid {
-  width: min(100%, 74vh, 760px);
+  width: min(100%, 70vh, 700px);
   aspect-ratio: 1;
   margin: 0 auto;
   display: grid;
@@ -173,7 +173,7 @@ button {
 }
 
 .primary-actions {
-  width: min(100%, 760px);
+  width: min(100%, 700px);
   margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -278,7 +278,7 @@ button {
 .weather-days {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 235px), 1fr));
   gap: 8px;
 }
 
@@ -363,9 +363,9 @@ button {
 }
 
 .tv-listings-widget {
-  width: min(100%, 760px);
+  width: 100%;
   margin: 0 auto;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
@@ -380,7 +380,7 @@ button {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
 }
 
 .tv-listings-header h2,
@@ -393,30 +393,36 @@ button {
 }
 
 .tv-listings-header h2 {
-  font-size: 1rem;
+  font-size: clamp(1.2rem, 2vw, 1.45rem);
   line-height: 1.2;
 }
 
 .tv-listings-header p,
 .tv-listings-attribution {
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: clamp(0.98rem, 1.5vw, 1.12rem);
+  font-weight: 650;
 }
 
 .tv-listings-channels {
-  margin-top: 9px;
+  margin-top: 12px;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
 }
 
 .tv-listings-channel {
   min-width: 0;
+  padding: 10px 9px;
+  border: 1px solid rgba(211, 204, 192, 0.88);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
 }
 
 .tv-listings-channel h3 {
-  font-size: 0.78rem;
+  font-size: clamp(1rem, 1.35vw, 1.12rem);
   line-height: 1.2;
+  font-weight: 800;
 }
 
 .tv-listings-channel ul {
@@ -425,22 +431,24 @@ button {
 }
 
 .tv-listings-channel li {
-  margin-top: 4px;
+  margin-top: 7px;
   display: grid;
-  grid-template-columns: 35px minmax(0, 1fr);
-  gap: 5px;
-  font-size: 0.78rem;
-  line-height: 1.18;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 6px;
+  font-size: clamp(0.96rem, 1.2vw, 1.08rem);
+  line-height: 1.22;
 }
 
 .tv-listings-channel time {
-  color: var(--muted);
-  font-weight: 760;
+  color: var(--ink);
+  font-size: 0.9em;
+  font-weight: 850;
 }
 
 .tv-listing-empty,
 .tv-listings-unavailable {
   color: var(--muted);
+  font-size: clamp(0.96rem, 1.2vw, 1.08rem);
 }
 
 .tv-listings-unavailable {
@@ -544,7 +552,7 @@ button {
 
 @media (max-width: 640px) {
   .app-shell {
-    width: min(100% - 20px, 920px);
+    width: min(100% - 20px, 1120px);
     padding-top: 14px;
     gap: 14px;
   }
@@ -596,8 +604,27 @@ button {
 
   .tv-listings-channels {
     grid-template-columns: 1fr;
+    gap: 9px;
   }
 
+  .tv-listings-channel {
+    padding: 10px;
+  }
+
+  .tv-listings-channel li {
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
+
+}
+
+@media (min-width: 641px) and (max-width: 980px) {
+  .tv-listings-channels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tv-listings-channel:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
 }
 
 @page {

@@ -7,6 +7,7 @@ const DEFAULT_TIMEOUT_MS = 5000;
 const TV_TIME_ZONE = 'Europe/London';
 const TV_WINDOW_START_HOUR = 19;
 const TV_WINDOW_END_HOUR = 23;
+const DISPLAY_ELLIPSIS_MIN_LENGTH = 45;
 
 const TV_CHANNELS = [
   { serviceId: '37123', name: 'BBC One South' },
@@ -28,6 +29,24 @@ export {
   TV_WINDOW_END_HOUR,
   TV_WINDOW_START_HOUR
 };
+
+export function formatTvDisplayTime(value) {
+  const match = String(value || '').match(/^(\d{1,2}):(\d{2})/);
+
+  if (!match) {
+    return '';
+  }
+
+  const hour = Number(match[1]);
+  const minute = match[2];
+
+  if (!Number.isFinite(hour)) {
+    return '';
+  }
+
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute}`;
+}
 
 export async function loadTvListings(options = {}) {
   const now = options.now ?? Date.now();
@@ -235,7 +254,7 @@ export function tvListingsPdfLines(tvListings) {
     const programs = Array.isArray(channel.programs) ? channel.programs : [];
     const schedule =
       programs.length > 0
-        ? programs.map((program) => `${program.startTime} ${program.title}`).join('; ')
+        ? programs.map((program) => `${formatTvDisplayTime(program.startTime)} ${program.title}`).join('; ')
         : 'No listings';
     lines.push(`${channel.name}: ${schedule}`);
   }
@@ -334,9 +353,15 @@ function parseIsoDurationMs(value) {
 }
 
 function cleanTitle(value) {
-  return decodeHtmlEntities(String(value || '').replace(/<[^>]*>/g, ' '))
+  const title = decodeHtmlEntities(String(value || '').replace(/<[^>]*>/g, ' '))
     .replace(/\s+/g, ' ')
     .trim();
+
+  if (title.length <= DISPLAY_ELLIPSIS_MIN_LENGTH) {
+    return title.replace(/\s*(?:\.{3}|…)$/, '').trim();
+  }
+
+  return title;
 }
 
 function decodeHtmlEntities(value) {

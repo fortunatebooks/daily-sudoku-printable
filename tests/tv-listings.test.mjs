@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildFreelyProxyUrl,
   buildFreelyTvGuideUrl,
+  formatTvDisplayTime,
   getCachedTvListings,
   loadFreelyTvListings,
   loadTvListings,
@@ -100,9 +101,29 @@ test('formats compact PDF lines without descriptions or artwork', () => {
   const lines = tvListingsPdfLines(listings);
 
   assert.match(lines[0], /Tonight on TV 19:00-23:00/);
-  assert.match(lines.join('\n'), /BBC One South: 19:00 EastEnders/);
+  assert.match(lines.join('\n'), /BBC One South: 7:00 EastEnders/);
   assert.doesNotMatch(lines.join('\n'), /A long programme description/);
   assert.doesNotMatch(lines.join('\n'), /image/);
+});
+
+test('formats visible TV listing times as 12-hour labels without pm', () => {
+  assert.equal(formatTvDisplayTime('19:00'), '7:00');
+  assert.equal(formatTvDisplayTime('23:00'), '11:00');
+  assert.equal(formatTvDisplayTime('00:30'), '12:30');
+});
+
+test('removes feed-provided ellipsis from short programme titles', () => {
+  const guide = sampleFreelyGuide();
+  guide.data.programs.find((channel) => channel.service_id === '37123').events.push({
+    main_title: 'New: Build Your Dream Home in...',
+    start_time: '2026-06-11T20:30:00+0000',
+    duration: 'PT30M'
+  });
+
+  const listings = normalizeFreelyTvGuide(guide, { dateIso: '2026-06-11' });
+  const title = listings.channels[0].programs.find((program) => program.startTime === '21:30')?.title;
+
+  assert.equal(title, 'New: Build Your Dream Home in');
 });
 
 function sampleFreelyGuide() {

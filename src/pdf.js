@@ -1,12 +1,38 @@
 import { weatherPdfLines } from './weather.js';
-import { tvListingsPdfLines } from './tv-listings.js';
+import { formatTvDisplayTime, tvListingsPdfLines } from './tv-listings.js';
 
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
+const PAGE_MARGIN_X = 34;
+const PAGE_MARGIN_TOP = 28;
+const PAGE_MARGIN_BOTTOM = 28;
+const CONTENT_WIDTH = A4_WIDTH - PAGE_MARGIN_X * 2;
+const TITLE_Y = A4_HEIGHT - PAGE_MARGIN_TOP - 6;
+const DATE_Y = TITLE_Y - 23;
+const GRID_SIZE = 410;
+const GRID_X = (A4_WIDTH - GRID_SIZE) / 2;
+const GRID_Y = 350;
+const WEATHER_HEIGHT = 44;
+const WEATHER_GAP_FROM_GRID = 12;
+const WEATHER_Y = GRID_Y - WEATHER_GAP_FROM_GRID - WEATHER_HEIGHT;
+const TV_GAP_FROM_WEATHER = 6;
+const TV_Y = PAGE_MARGIN_BOTTOM;
+const TV_HEIGHT = WEATHER_Y - TV_GAP_FROM_WEATHER - TV_Y;
+const TV_CHANNEL_COUNT = 5;
+const TV_INNER_PADDING_X = 10;
+const TV_INNER_PADDING_Y = 9;
+const TV_COLUMN_GAP = 10;
+const MAX_PROGRAMME_FONT = 12.5;
+const MIN_PROGRAMME_FONT = 7.2;
+const PROGRAMME_FONT_STEP = 0.25;
+const MAX_CHANNEL_FONT = 11.8;
+const PROGRAMME_TRUNCATE_AFTER_CHARS = 45;
+const PROGRAMME_TIME_FONT_SCALE = 0.86;
+const PROGRAMME_TIME_TITLE_GAP = 4;
 const PDF_MIME_TYPE = 'application/pdf';
 const DATE_KEY_PATTERN = /(\d{4})-(\d{2})-(\d{2})/;
 
-export { A4_HEIGHT, A4_WIDTH };
+export { A4_HEIGHT, A4_WIDTH, CONTENT_WIDTH };
 
 export function sudokuPdfFilename(displayDate = new Date()) {
   return `sudoku-${dateKeyFrom(displayDate)}.pdf`;
@@ -50,32 +76,27 @@ function resolvePdfInputs(puzzleData, displayDate, options) {
 }
 
 function buildPageContent(givens, displayDate, options = {}) {
-  const gridSize = 480;
-  const cellSize = gridSize / 9;
-  const gridX = (A4_WIDTH - gridSize) / 2;
-  const gridY = 270;
-  const titleY = A4_HEIGHT - 36;
-  const dateY = titleY - 24;
-  const numberSize = 32;
+  const cellSize = GRID_SIZE / 9;
+  const numberSize = GRID_SIZE / 15;
   const operations = [];
 
   operations.push('q');
   operations.push('0 0 0 RG');
   operations.push('0 0 0 rg');
 
-  drawText(operations, options.title || "Jenny's Sudoku", A4_WIDTH / 2, titleY, 28, 'F2', 'center');
-  drawText(operations, displayDateLabel(displayDate), A4_WIDTH / 2, dateY, 14, 'F1', 'center');
+  drawText(operations, options.title || "Jenny's Sudoku", A4_WIDTH / 2, TITLE_Y, 28, 'F2', 'center');
+  drawText(operations, displayDateLabel(displayDate), A4_WIDTH / 2, DATE_Y, 14, 'F1', 'center');
 
-  drawGrid(operations, gridX, gridY, gridSize, cellSize);
-  drawGivens(operations, givens, gridX, gridY, cellSize, numberSize);
-  drawInfoBoxes(operations, options, gridX, 38, gridSize, 210);
+  drawGrid(operations, GRID_X, GRID_Y, GRID_SIZE, cellSize);
+  drawGivens(operations, givens, GRID_X, GRID_Y, cellSize, numberSize);
+  drawInfoBoxes(operations, options);
 
   operations.push('Q');
 
   return `${operations.join('\n')}\n`;
 }
 
-function drawInfoBoxes(operations, options, x, y, width, height) {
+function drawInfoBoxes(operations, options) {
   const weatherLines = weatherPdfLines(options.weather);
   const tvLines = tvListingsPdfLines(options.tvListings);
 
@@ -84,21 +105,37 @@ function drawInfoBoxes(operations, options, x, y, width, height) {
   }
 
   if (weatherLines.length > 0 && tvLines.length > 0) {
-    const gap = 8;
-    const weatherHeight = 56;
-    const tvHeight = height - weatherHeight - gap;
-    const weatherY = y + tvHeight + gap;
-    drawWeatherBox(operations, options.weather, weatherLines, x, weatherY, width, weatherHeight);
-    drawTvListingsBox(operations, options.tvListings, tvLines, x, y, width, tvHeight);
+    drawWeatherRow(operations, options.weather, weatherLines, {
+      x: PAGE_MARGIN_X,
+      y: WEATHER_Y,
+      width: CONTENT_WIDTH,
+      height: WEATHER_HEIGHT
+    });
+    drawTvListingsBox(operations, options.tvListings, tvLines, {
+      x: PAGE_MARGIN_X,
+      y: TV_Y,
+      width: CONTENT_WIDTH,
+      height: TV_HEIGHT
+    });
     return;
   }
 
   if (tvLines.length > 0) {
-    drawTvListingsBox(operations, options.tvListings, tvLines, x, y, width, height);
+    drawTvListingsBox(operations, options.tvListings, tvLines, {
+      x: PAGE_MARGIN_X,
+      y: TV_Y,
+      width: CONTENT_WIDTH,
+      height: TV_HEIGHT + WEATHER_HEIGHT + TV_GAP_FROM_WEATHER
+    });
     return;
   }
 
-  drawWeatherBox(operations, options.weather, weatherLines, x, y, width, height);
+  drawWeatherRow(operations, options.weather, weatherLines, {
+    x: PAGE_MARGIN_X,
+    y: TV_Y + TV_HEIGHT + TV_GAP_FROM_WEATHER,
+    width: CONTENT_WIDTH,
+    height: WEATHER_HEIGHT
+  });
 }
 
 function drawLineBox(operations, x, y, width, height) {
@@ -117,77 +154,489 @@ function drawInfoLines(operations, lines, x, y, width, lineGap, maxLines = 8) {
   });
 }
 
-function drawWeatherBox(operations, weather, fallbackLines, x, y, width, height) {
-  drawLineBox(operations, x, y, width, height);
-
+function drawWeatherRow(operations, weather, fallbackLines, box) {
+  const { x, y, width, height } = box;
   if (!weather || weather.unavailable || !Array.isArray(weather.days) || weather.days.length === 0) {
-    drawInfoLines(operations, fallbackLines, x + 10, y + height - 16, width - 20, 8, 5);
+    const lines = fallbackLines.filter((line) => !/^Christchurch weather\b/i.test(line));
+    drawInfoLines(operations, lines, x, y + height - 10, width, 8, 4);
     return;
   }
 
   const days = weather.days.slice(0, 3);
   const gutter = 10;
-  const dayWidth = (width - 20 - gutter * (days.length - 1)) / days.length;
-  const dayTop = y + height - 13;
+  const dayWidth = (width - gutter * (days.length - 1)) / days.length;
+  const dayTop = y + height - 9;
 
   days.forEach((day, index) => {
-    const dayX = x + 10 + index * (dayWidth + gutter);
-    const iconX = dayX + 10;
-    const iconY = dayTop - 20;
+    const dayX = x + index * (dayWidth + gutter);
+    const iconX = dayX + 15;
+    const iconY = dayTop - 16;
+    const textX = dayX + 31;
+    const textWidth = dayWidth - 31;
     const label = index === 0 ? 'Today' : shortPdfDayLabel(day.dateIso);
     const rain = stripPdfPrefix(day.rainyPeriodsLabel);
     const sun = `${day.sunrise || '--:--'}-${day.sunset || '--:--'}`;
 
     drawWeatherIcon(operations, day.icon, iconX, iconY, 10);
-    drawText(operations, label, dayX + 29, dayTop, 7.0, 'F2', 'left');
-    drawText(operations, truncatePdfText(day.label || 'Forecast', dayWidth - 29, 6.4), dayX + 29, dayTop - 8.8, 6.4, 'F1', 'left');
-    drawText(operations, `${shortTemperature(day)}   Rain ${rain}`, dayX + 29, dayTop - 17.4, 6.2, 'F1', 'left');
-    drawText(operations, `Sun ${sun}   Moon ${day.moonPhase || ''}`, dayX + 29, dayTop - 26, 6.2, 'F1', 'left');
+    drawText(operations, label, textX, dayTop, 7.8, 'F2', 'left');
+    drawText(
+      operations,
+      truncatePdfText(day.label || 'Forecast', textWidth, 7.0),
+      textX,
+      dayTop - 9.4,
+      7.0,
+      'F1',
+      'left'
+    );
+    drawText(
+      operations,
+      truncatePdfText(`${shortTemperature(day)} Rain ${rain}`, textWidth, 6.6),
+      textX,
+      dayTop - 18.1,
+      6.6,
+      'F1',
+      'left'
+    );
+    drawText(
+      operations,
+      truncatePdfText(`Sun ${sun} Moon ${day.moonPhase || ''}`, textWidth, 6.6),
+      textX,
+      dayTop - 26.8,
+      6.6,
+      'F1',
+      'left'
+    );
   });
 }
 
-function drawTvListingsBox(operations, tvListings, fallbackLines, x, y, width, height) {
+function drawTvListingsBox(operations, tvListings, fallbackLines, box) {
+  const { x, y, width, height } = box;
   drawLineBox(operations, x, y, width, height);
 
   if (!tvListings || tvListings.unavailable || !Array.isArray(tvListings.channels)) {
-    drawInfoLines(operations, fallbackLines, x + 10, y + height - 16, width - 20, 7.2, 6);
+    const cleanedLines = fallbackLines.filter((line) => !/^Tonight on TV\b/i.test(line));
+    const lines = cleanedLines.length > 0 ? cleanedLines : ['TV listings unavailable'];
+    drawInfoLines(operations, lines, x + 10, y + height - 18, width - 20, 11, 10);
     return;
   }
 
-  drawText(
-    operations,
-    `Tonight on TV ${tvListings.windowLabel || '19:00-23:00'}`,
-    x + 10,
-    y + height - 15,
-    8.2,
-    'F2',
-    'left'
-  );
+  const layout = layoutTvListingsForPdf(tvListings, box);
 
-  const channels = tvListings.channels.slice(0, 5);
-  const gutter = 9;
-  const columnWidth = (width - 20 - gutter * (channels.length - 1)) / channels.length;
-  const headingY = y + height - 31;
+  layout.columns.forEach((column) => {
+    const channelFontSize = column.channelFontSize || layout.channelFontSize;
+    const programmeFontSize = column.programmeFontSize || layout.programmeFontSize;
+    const programmeLineHeight = column.programmeLineHeight || layout.programmeLineHeight;
+    const headingLineHeight = column.headingLineHeight || layout.headingLineHeight;
+    const headingToListingsGap = column.headingToListingsGap || layout.headingToListingsGap;
+    const entryGap = column.entryGap || layout.entryGap;
+    let cursorY = column.yTop - channelFontSize;
 
-  channels.forEach((channel, index) => {
-    const columnX = x + 10 + index * (columnWidth + gutter);
-    drawText(operations, channel.name || 'Channel', columnX, headingY, 7.0, 'F2', 'left');
+    column.headingLines.forEach((line) => {
+      drawText(operations, line, column.x, cursorY, channelFontSize, 'F2', 'left');
+      cursorY -= headingLineHeight;
+    });
 
-    const programs = Array.isArray(channel.programs) ? channel.programs : [];
-    const entries = programs.length > 0 ? programs : [{ startTime: '', title: 'No listings' }];
-    entries.slice(0, 8).forEach((program, programIndex) => {
-      const prefix = program.startTime ? `${program.startTime} ` : '';
-      drawText(
-        operations,
-        truncatePdfText(`${prefix}${program.title || 'Untitled'}`, columnWidth, 6.0),
-        columnX,
-        headingY - 9 - programIndex * 7.3,
-        6.0,
-        'F1',
-        'left'
-      );
+    cursorY -= headingToListingsGap;
+
+    column.entries.forEach((entry) => {
+      entry.lines.forEach((line, lineIndex) => {
+        const titleX = column.x + (entry.lineXOffsets?.[lineIndex] ?? entry.titleXOffset ?? 0);
+
+        if (lineIndex === 0 && entry.time) {
+          drawText(
+            operations,
+            entry.time,
+            column.x,
+            cursorY,
+            entry.timeFontSize || programmeFontSize * PROGRAMME_TIME_FONT_SCALE,
+            'F2',
+            'left'
+          );
+        }
+
+        if (line) {
+          drawText(operations, line, titleX, cursorY, programmeFontSize, 'F1', 'left');
+        }
+        cursorY -= programmeLineHeight;
+      });
+      cursorY -= entryGap;
     });
   });
+}
+
+export function layoutTvListingsForPdf(tvListings, box) {
+  const fittedLayout = buildTvListingsLayout(tvListings, box, false);
+
+  if (fittedLayout.fits) {
+    return withoutFitFlag(fittedLayout);
+  }
+
+  return withoutFitFlag(buildTvListingsLayout(tvListings, box, true));
+}
+
+function buildTvListingsLayout(tvListings, box, forceCrowded) {
+  const innerX = box.x + TV_INNER_PADDING_X;
+  const innerY = box.y + TV_INNER_PADDING_Y;
+  const innerWidth = box.width - TV_INNER_PADDING_X * 2;
+  const innerHeight = box.height - TV_INNER_PADDING_Y * 2;
+  const columnWidth = (innerWidth - TV_COLUMN_GAP * (TV_CHANNEL_COUNT - 1)) / TV_CHANNEL_COUNT;
+  const channels = normalizeTvChannels(tvListings);
+  let fits = true;
+  let truncatedCount = 0;
+
+  const columns = channels.map((channel, index) => {
+    const columnX = innerX + index * (columnWidth + TV_COLUMN_GAP);
+    const programs =
+      Array.isArray(channel.programs) && channel.programs.length > 0
+        ? channel.programs
+        : [{ startTime: '', title: 'No listings' }];
+    const columnFit = fitBestTvColumn(programs, {
+      columnWidth,
+      heading: pdfChannelHeading(channel.name || `Channel ${index + 1}`),
+      innerHeight,
+      forceCrowded
+    });
+    let entries = columnFit.entries;
+    let requiredHeight = columnFit.requiredHeight;
+    truncatedCount += columnFit.truncatedCount;
+
+    if (!columnFit.fits) {
+      fits = false;
+    }
+
+    const visibleEntries = forceCrowded
+      ? entriesThatFit(columnFit.entries, {
+          innerHeight,
+          headingLineHeight: columnFit.headingLineHeight,
+          headingLines: columnFit.headingLines,
+          headingToListingsGap: columnFit.headingToListingsGap,
+          programmeLineHeight: columnFit.programmeLineHeight,
+          entryGap: columnFit.entryGap,
+          columnWidth,
+          programmeFontSize: columnFit.programmeFontSize
+        })
+      : entries;
+
+    if (forceCrowded) {
+      entries = visibleEntries;
+      requiredHeight = columnRequiredHeight({
+        entries: visibleEntries,
+        headingLineHeight: columnFit.headingLineHeight,
+        headingLines: columnFit.headingLines,
+        headingToListingsGap: columnFit.headingToListingsGap,
+        programmeLineHeight: columnFit.programmeLineHeight,
+        entryGap: columnFit.entryGap
+      });
+      fits = fits && requiredHeight <= innerHeight;
+    }
+
+    return {
+      x: columnX,
+      yTop: innerY + innerHeight,
+      width: columnWidth,
+      heading: columnFit.heading,
+      headingLines: columnFit.headingLines,
+      channelFontSize: columnFit.channelFontSize,
+      programmeFontSize: columnFit.programmeFontSize,
+      programmeLineHeight: columnFit.programmeLineHeight,
+      headingLineHeight: columnFit.headingLineHeight,
+      headingToListingsGap: columnFit.headingToListingsGap,
+      entryGap: columnFit.entryGap,
+      entries: visibleEntries
+    };
+  });
+  const programmeFontSize = Math.min(...columns.map((column) => column.programmeFontSize));
+  const channelFontSize = Math.min(...columns.map((column) => column.channelFontSize));
+  const programmeLineHeight = Math.min(...columns.map((column) => column.programmeLineHeight));
+  const headingLineHeight = Math.min(...columns.map((column) => column.headingLineHeight));
+  const headingToListingsGap = Math.min(...columns.map((column) => column.headingToListingsGap));
+  const entryGap = Math.min(...columns.map((column) => column.entryGap));
+
+  return {
+    channelFontSize,
+    programmeFontSize,
+    programmeLineHeight,
+    headingLineHeight,
+    headingToListingsGap,
+    entryGap,
+    columns,
+    fits,
+    truncatedCount
+  };
+}
+
+function normalizeTvChannels(tvListings) {
+  const channels = Array.isArray(tvListings?.channels) ? tvListings.channels.slice(0, TV_CHANNEL_COUNT) : [];
+
+  while (channels.length < TV_CHANNEL_COUNT) {
+    channels.push({
+      name: `Channel ${channels.length + 1}`,
+      programs: []
+    });
+  }
+
+  return channels;
+}
+
+function pdfChannelHeading(value) {
+  const heading = cleanPdfText(value);
+
+  if (/^BBC One South$/i.test(heading)) {
+    return 'BBC One';
+  }
+
+  if (/^BBC Two$/i.test(heading)) {
+    return 'BBC Two';
+  }
+
+  return heading;
+}
+
+function programmeText(program) {
+  const prefix = program?.startTime ? `${formatTvDisplayTime(program.startTime) || program.startTime} ` : '';
+  return `${prefix}${program?.title || 'Untitled'}`;
+}
+
+function programmeTitle(program) {
+  return cleanPdfText(program?.title || 'Untitled');
+}
+
+function programmeTime(program) {
+  return cleanPdfText(formatTvDisplayTime(program?.startTime) || program?.startTime || '');
+}
+
+function programmeTimeFontSize(programmeFontSize) {
+  return roundFontSize(programmeFontSize * PROGRAMME_TIME_FONT_SCALE);
+}
+
+function programmeTitleXOffset(programmeFontSize) {
+  return (
+    estimateHelveticaWidth('11:00', programmeTimeFontSize(programmeFontSize)) +
+    PROGRAMME_TIME_TITLE_GAP
+  );
+}
+
+function fitBestTvColumn(programs, metrics) {
+  const fontOptions = metrics.forceCrowded
+    ? [MIN_PROGRAMME_FONT]
+    : buildDescendingFontOptions(MAX_PROGRAMME_FONT, MIN_PROGRAMME_FONT, PROGRAMME_FONT_STEP);
+  let bestTruncatedFit = null;
+  let bestOverflowFit = null;
+
+  for (const programmeFontSize of fontOptions) {
+    const channelFontSize = Math.min(programmeFontSize + 0.6, MAX_CHANNEL_FONT);
+    const heading = metrics.heading;
+    const headingLines = [truncatePdfText(heading, metrics.columnWidth * 0.9, channelFontSize)];
+    const fit = fitTvEntriesForColumn(programs, {
+      ...metrics,
+      channelFontSize,
+      entryGap: Math.max(2.2, programmeFontSize * 0.32),
+      heading,
+      headingLineHeight: channelFontSize * 1.12,
+      headingLines,
+      headingToListingsGap: Math.max(5, programmeFontSize * 0.48),
+      programmeFontSize,
+      programmeLineHeight: programmeFontSize * 1.14
+    });
+
+    if (fit.fits && fit.truncatedCount === 0) {
+      return fit;
+    }
+
+    if (
+      fit.fits &&
+      (!bestTruncatedFit ||
+        fit.truncatedCount < bestTruncatedFit.truncatedCount ||
+        (fit.truncatedCount === bestTruncatedFit.truncatedCount &&
+          fit.programmeFontSize > bestTruncatedFit.programmeFontSize))
+    ) {
+      bestTruncatedFit = fit;
+    }
+
+    if (
+      !bestOverflowFit ||
+      fit.truncatedCount < bestOverflowFit.truncatedCount ||
+      (fit.truncatedCount === bestOverflowFit.truncatedCount && fit.requiredHeight < bestOverflowFit.requiredHeight)
+    ) {
+      bestOverflowFit = fit;
+    }
+  }
+
+  return bestTruncatedFit || bestOverflowFit;
+}
+
+function fitTvEntriesForColumn(programs, metrics) {
+  const lineOptions = metrics.forceCrowded ? [1] : [3, 2, 1];
+  let best = null;
+
+  for (const maxLines of lineOptions) {
+    const entries = programs.map((program) => {
+      const originalText = programmeText(program);
+      const time = programmeTime(program);
+      const timeFontSize = programmeTimeFontSize(metrics.programmeFontSize);
+      const titleXOffset = time ? programmeTitleXOffset(metrics.programmeFontSize) : 0;
+      const titleWidth = Math.max(20, metrics.columnWidth - titleXOffset);
+      const wrapped = wrapProgrammeTitleForEntry(programmeTitle(program), {
+        allowTruncate: cleanPdfText(originalText).length > PROGRAMME_TRUNCATE_AFTER_CHARS,
+        columnWidth: metrics.columnWidth,
+        maxLines,
+        programmeFontSize: metrics.programmeFontSize,
+        titleWidth,
+        titleXOffset,
+        time
+      });
+
+      return {
+        lines: wrapped.lines,
+        lineXOffsets: wrapped.lineXOffsets,
+        originalText,
+        time,
+        timeFontSize,
+        titleXOffset,
+        truncated: wrapped.truncated
+      };
+    });
+    const requiredHeight = columnRequiredHeight({
+      entries,
+      headingLineHeight: metrics.headingLineHeight,
+      headingLines: metrics.headingLines,
+      headingToListingsGap: metrics.headingToListingsGap,
+      programmeLineHeight: metrics.programmeLineHeight,
+      entryGap: metrics.entryGap
+    });
+    const truncatedCount = countTruncatedEntries(entries);
+    const fit = {
+      channelFontSize: metrics.channelFontSize,
+      entries,
+      entryGap: metrics.entryGap,
+      fits: requiredHeight <= metrics.innerHeight,
+      heading: metrics.heading,
+      headingLineHeight: metrics.headingLineHeight,
+      headingLines: metrics.headingLines,
+      headingToListingsGap: metrics.headingToListingsGap,
+      programmeFontSize: metrics.programmeFontSize,
+      programmeLineHeight: metrics.programmeLineHeight,
+      requiredHeight,
+      truncatedCount
+    };
+
+    if (fit.fits) {
+      return fit;
+    }
+
+    if (
+      !best ||
+      fit.truncatedCount < best.truncatedCount ||
+      (fit.truncatedCount === best.truncatedCount && fit.requiredHeight < best.requiredHeight)
+    ) {
+      best = fit;
+    }
+  }
+
+  return best;
+}
+
+function wrapProgrammeTitleForEntry(title, options) {
+  const allowTruncate = options.allowTruncate;
+  const firstWord = tokenizePdfText(title)[0] || '';
+  const firstWordWidth = estimateHelveticaWidth(firstWord, options.programmeFontSize);
+
+  if (
+    options.time &&
+    options.maxLines > 1 &&
+    firstWordWidth > options.titleWidth &&
+    firstWordWidth <= options.columnWidth
+  ) {
+    const wrapped = wrapPdfText(title, options.columnWidth, options.programmeFontSize, options.maxLines - 1, {
+      allowTruncate
+    });
+
+    return {
+      lines: ['', ...wrapped.lines],
+      lineXOffsets: [0, ...wrapped.lines.map(() => 0)],
+      truncated: wrapped.truncated
+    };
+  }
+
+  const wrapped = wrapPdfText(title, options.titleWidth, options.programmeFontSize, options.maxLines, {
+    allowTruncate
+  });
+
+  return {
+    lines: wrapped.lines,
+    lineXOffsets: wrapped.lines.map(() => options.titleXOffset),
+    truncated: wrapped.truncated
+  };
+}
+
+function countTruncatedEntries(entries) {
+  return entries.filter((entry) => entry.truncated).length;
+}
+
+function buildDescendingFontOptions(max, min, step) {
+  const values = [];
+
+  for (let value = max; value >= min - 0.001; value -= step) {
+    values.push(roundFontSize(value));
+  }
+
+  return values;
+}
+
+function columnRequiredHeight(layout) {
+  const entriesHeight = layout.entries.reduce(
+    (total, entry, index) =>
+      total +
+      entry.lines.length * layout.programmeLineHeight +
+      (index === layout.entries.length - 1 ? 0 : layout.entryGap),
+    0
+  );
+
+  return (
+    layout.headingLines.length * layout.headingLineHeight +
+    layout.headingToListingsGap +
+    entriesHeight
+  );
+}
+
+function entriesThatFit(entries, metrics) {
+  const visibleEntries = [];
+  let usedHeight =
+    metrics.headingLines.length * metrics.headingLineHeight + metrics.headingToListingsGap;
+
+  for (const entry of entries) {
+    const additionalGap = visibleEntries.length > 0 ? metrics.entryGap : 0;
+    const entryHeight = entry.lines.length * metrics.programmeLineHeight;
+
+    if (usedHeight + additionalGap + entryHeight <= metrics.innerHeight) {
+      visibleEntries.push(entry);
+      usedHeight += additionalGap + entryHeight;
+      continue;
+    }
+
+    const remainingHeight = metrics.innerHeight - usedHeight - additionalGap;
+
+    if (remainingHeight >= metrics.programmeLineHeight) {
+      visibleEntries.push({
+        lines: [truncatePdfText('...', metrics.columnWidth, metrics.programmeFontSize)],
+        originalText: entry.originalText,
+        truncated: true
+      });
+    }
+
+    break;
+  }
+
+  return visibleEntries;
+}
+
+function withoutFitFlag(layout) {
+  const { fits, truncatedCount, ...publicLayout } = layout;
+  return publicLayout;
+}
+
+function roundFontSize(value) {
+  return Math.round(value * 100) / 100;
 }
 
 function drawGrid(operations, gridX, gridY, gridSize, cellSize) {
@@ -538,6 +987,116 @@ function truncatePdfText(value, maxWidth, size) {
   }
 
   return text;
+}
+
+function tokenizePdfText(text) {
+  return text
+    .replace(/([/-])/g, '$1 ')
+    .split(' ')
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
+
+function breakPdfWord(word, maxWidth, size) {
+  const cleanWord = cleanPdfText(word);
+
+  if (!cleanWord || estimateHelveticaWidth(cleanWord, size) <= maxWidth) {
+    return [cleanWord];
+  }
+
+  const parts = [];
+  let remaining = cleanWord;
+
+  while (remaining) {
+    let take = remaining.length;
+
+    while (take > 1) {
+      const candidate = remaining.slice(0, take);
+      const rendered = take < remaining.length ? `${candidate}-` : candidate;
+
+      if (estimateHelveticaWidth(rendered, size) <= maxWidth) {
+        break;
+      }
+
+      take -= 1;
+    }
+
+    const piece = remaining.slice(0, take);
+    remaining = remaining.slice(take);
+    parts.push(remaining ? `${piece}-` : piece);
+  }
+
+  return parts;
+}
+
+function wrapPdfText(value, maxWidth, size, maxLines, options = {}) {
+  const text = cleanPdfText(value);
+  const allowTruncate = options.allowTruncate !== false;
+  const lineLimit = allowTruncate ? maxLines : Number.POSITIVE_INFINITY;
+
+  if (!text) {
+    return { lines: [''], truncated: false };
+  }
+
+  if (maxLines <= 1 && allowTruncate) {
+    const line = truncatePdfText(text, maxWidth, size);
+    return { lines: [line], truncated: line !== text };
+  }
+
+  const words = tokenizePdfText(text);
+  const lines = [];
+  let index = 0;
+  let truncated = false;
+
+  while (index < words.length && lines.length < lineLimit) {
+    let line = '';
+
+    while (index < words.length) {
+      const candidate = line ? `${line} ${words[index]}` : words[index];
+
+      if (estimateHelveticaWidth(candidate, size) <= maxWidth) {
+        line = candidate;
+        index += 1;
+        continue;
+      }
+
+      break;
+    }
+
+    if (!line) {
+      const word = words[index];
+      const brokenWord = breakPdfWord(word, maxWidth, size);
+
+      if (brokenWord.length > 1) {
+        words.splice(index, 1, ...brokenWord);
+        continue;
+      }
+
+      line = brokenWord[0] || word;
+      index += 1;
+    }
+
+    if (allowTruncate && lines.length === lineLimit - 1 && index < words.length) {
+      const combined = `${line} ${words.slice(index).join(' ')}`;
+      const finalLine = truncatePdfText(combined, maxWidth, size);
+      lines.push(finalLine);
+      truncated = true;
+      index = words.length;
+      break;
+    }
+
+    lines.push(line);
+
+    if (allowTruncate && lines.length >= lineLimit) {
+      break;
+    }
+  }
+
+  if (index < words.length) {
+    truncated = allowTruncate;
+  }
+
+  return { lines, truncated };
 }
 
 function formatNumber(value) {

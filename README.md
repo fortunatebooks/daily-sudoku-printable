@@ -69,6 +69,19 @@ npm run build
 There are no package dependencies at the moment, but `npm install` is still a
 useful habit because it creates the expected npm project state.
 
+## Publish Safety
+
+This project does not need secrets or private configuration. Keep `.env` files,
+deployment tokens, generated PDFs, local `.herenow/` state, and `dist/` builds
+out of git.
+
+The npm package contents are allowlisted in `package.json` with the `files`
+field. Before publishing or sharing a tarball, check the preview:
+
+```bash
+npm pack --dry-run
+```
+
 ## Run Locally
 
 ```bash

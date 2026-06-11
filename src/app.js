@@ -1,3 +1,5 @@
+import { buildSudokuPdf, sudokuPdfFilename } from './pdf.js';
+import { generateDailySudoku } from './sudoku.js';
 import { getCachedWeather, loadWeather } from './weather.js';
 import {
   formatTvDisplayTime,
@@ -5,59 +7,6 @@ import {
   loadTvListings,
   unavailableTvListings
 } from './tv-listings.js';
-
-const PUZZLE_EXPORTS = [
-  'getPuzzleForDate',
-  'puzzleForDate',
-  'getPuzzle',
-  'getDailyPuzzle',
-  'generateDailySudoku',
-  'generateSudokuForDate',
-  'generateDailyPuzzle',
-  'generatePuzzle',
-  'buildPuzzle',
-  'buildDailyPuzzle',
-  'createPuzzle',
-  'createDailyPuzzle',
-  'makePuzzle',
-  'makeDailyPuzzle',
-  'getSudokuForDate',
-  'generateSudoku',
-  'generate',
-  'create',
-  'dailySudoku',
-  'default'
-];
-
-const PDF_EXPORTS = [
-  'downloadPdf',
-  'downloadPDF',
-  'downloadPuzzlePdf',
-  'downloadPuzzlePDF',
-  'downloadDailyPdf',
-  'downloadDailyPDF',
-  'downloadSudokuPdf',
-  'downloadSudokuPDF',
-  'buildSudokuPdf',
-  'buildSudokuPDF',
-  'buildSudokuPdfBytes',
-  'buildSudokuPDFBytes',
-  'generatePdf',
-  'generatePDF',
-  'generatePuzzlePdf',
-  'generatePuzzlePDF',
-  'createPdf',
-  'createPDF',
-  'buildPdf',
-  'buildPDF',
-  'buildPuzzlePdf',
-  'buildPuzzlePDF',
-  'savePdf',
-  'savePDF',
-  'exportPdf',
-  'exportPDF',
-  'default'
-];
 
 const appState = {
   route: null,
@@ -585,42 +534,10 @@ function syncHistoryDialog(shouldOpen) {
   }
 }
 
-async function loadPuzzle(dateIso) {
-  const sudokuModule = await import('./sudoku.js');
-  const generator = findExport(sudokuModule, PUZZLE_EXPORTS);
-
-  if (!generator) {
-    throw new Error('No compatible puzzle generator was exported from sudoku.js.');
-  }
-
-  return callPuzzleGenerator(generator, dateIso);
-}
-
-async function callPuzzleGenerator(generator, dateIso) {
-  const payload = {
-    date: dateIso,
-    dateIso,
-    isoDate: dateIso,
-    dateObject: parseIsoDate(dateIso),
-    timeZone: 'Europe/London'
-  };
-  const attempts =
-    generator.length <= 1
-      ? [() => generator(dateIso), () => generator(payload)]
-      : [() => generator(dateIso, payload), () => generator(payload)];
-  let lastError = null;
-
-  for (const attempt of attempts) {
-    try {
-      const result = await attempt();
-      normalisePuzzle(result);
-      return result;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error('The puzzle generator returned an invalid grid.');
+function loadPuzzle(dateIso) {
+  const puzzle = generateDailySudoku(dateIso);
+  normalisePuzzle(puzzle);
+  return puzzle;
 }
 
 async function waitForWeatherForPdf(routeKey, dateIso) {
@@ -702,14 +619,6 @@ async function createCurrentPdfBlob(overrides = undefined, statusMessage = 'Prep
   }
 
   setStatus(statusMessage);
-  const pdfModule = await import('./pdf.js');
-  const pdfExport = findExportEntry(pdfModule, PDF_EXPORTS);
-  const createPdf = pdfExport?.fn;
-
-  if (!createPdf) {
-    throw new Error('No compatible PDF export was found in pdf.js.');
-  }
-
   const displayDate = formatDisplayDate.format(parseIsoDate(dateIso));
   const payload = {
     date: dateIso,
@@ -733,74 +642,21 @@ async function createCurrentPdfBlob(overrides = undefined, statusMessage = 'Prep
       appState.tvListings ||
       getCachedTvListings({ dateIso }) ||
       unavailableTvListings(dateIso),
-    filename: resolvePdfFilename(pdfModule, dateIso)
+    filename: sudokuPdfFilename(dateIso)
   };
-  const result = await callPdfExporter(createPdf, payload, pdfExport.name);
-
-  return {
-    blob: await pdfResultToBlob(result),
-    filename: payload.filename
-  };
-}
-
-async function callPdfExporter(createPdf, payload, exportName) {
-  const options = {
+  const result = buildSudokuPdf(payload.puzzle, payload.dateIso, {
     cells: payload.cells,
     displayDate: payload.displayDate,
     filename: payload.filename,
     title: payload.title,
     weather: payload.weather,
     tvListings: payload.tvListings
+  });
+
+  return {
+    blob: await pdfResultToBlob(result),
+    filename: payload.filename
   };
-  const name = `${exportName || ''} ${createPdf.name || ''}`.toLowerCase();
-  const puzzleFirst = () => createPdf(payload.puzzle, payload.dateIso, options);
-  const dateFirst = () => createPdf(payload.dateIso, payload.puzzle, options);
-  const objectOnly = () => createPdf(payload);
-  const puzzleWithOptions = () => createPdf(payload.puzzle, options);
-  const attempts = [];
-
-  if (name.includes('buildsudokupdf') || name.includes('buildsudokupdfbytes')) {
-    attempts.push(puzzleFirst, objectOnly, dateFirst);
-  } else if (createPdf.length <= 1) {
-    attempts.push(objectOnly, puzzleFirst, dateFirst);
-  } else if (name.includes('build') || name.includes('create') || name.includes('generate')) {
-    attempts.push(puzzleFirst, dateFirst, objectOnly, puzzleWithOptions);
-  } else {
-    attempts.push(dateFirst, objectOnly, puzzleFirst, puzzleWithOptions);
-  }
-
-  let lastError = null;
-  for (const attempt of attempts) {
-    try {
-      return await attempt();
-    } catch (error) {
-      lastError = error;
-    }
-  }
-
-  throw lastError || new Error('PDF export failed.');
-}
-
-function findExport(moduleObject, names) {
-  return findExportEntry(moduleObject, names)?.fn || null;
-}
-
-function findExportEntry(moduleObject, names) {
-  for (const name of names) {
-    const value = moduleObject[name];
-    if (typeof value === 'function') {
-      return { fn: value, name };
-    }
-
-    if (value && typeof value === 'object') {
-      const nested = findExportEntry(value, names.filter((candidate) => candidate !== 'default'));
-      if (nested) {
-        return nested;
-      }
-    }
-  }
-
-  return null;
 }
 
 function normalisePuzzle(source) {
@@ -894,36 +750,6 @@ function cellToDisplayValue(cell) {
   }
 
   return null;
-}
-
-function savePdfResult(result, filename) {
-  if (result instanceof Blob) {
-    downloadBlob(result, filename);
-    return;
-  }
-
-  if (result instanceof ArrayBuffer || ArrayBuffer.isView(result)) {
-    const blob = new Blob([result], { type: 'application/pdf' });
-    downloadBlob(blob, filename);
-    return;
-  }
-
-  if (typeof result === 'string') {
-    const link = document.createElement('a');
-    link.href = result;
-    link.download = filename;
-    document.body.append(link);
-    link.click();
-    link.remove();
-  }
-
-  if (typeof result === 'object') {
-    const value = result.blob ?? result.file ?? result.data ?? result.bytes ?? result.url ?? result.href;
-    const downloadName = result.filename || result.name || filename;
-    if (value != null) {
-      savePdfResult(value, downloadName);
-    }
-  }
 }
 
 async function pdfResultToBlob(result) {
@@ -1049,21 +875,6 @@ function cellLabel(index, value) {
   return `Row ${row}, column ${column}, ${contents}`;
 }
 
-function pdfFilename(dateIso) {
-  return `sudoku-${dateIso}.pdf`;
-}
-
-function resolvePdfFilename(pdfModule, dateIso) {
-  if (typeof pdfModule.sudokuPdfFilename === 'function') {
-    try {
-      return pdfModule.sudokuPdfFilename(dateIso);
-    } catch {
-      return pdfFilename(dateIso);
-    }
-  }
-
-  return pdfFilename(dateIso);
-}
 
 function getLondonTodayIso() {
   const parts = new Intl.DateTimeFormat('en-GB', {

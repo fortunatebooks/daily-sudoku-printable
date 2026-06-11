@@ -1,8 +1,30 @@
 {
   "name": "daily-sudoku-printable",
   "version": "0.1.0",
+  "description": "A personal daily printable Sudoku page with local weather and evening TV listings.",
+  "homepage": "https://jennysudoku.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fortunatebooks/daily-sudoku-printable.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fortunatebooks/daily-sudoku-printable/issues"
+  },
+  "keywords": [
+    "sudoku",
+    "printable",
+    "pdf",
+    "weather",
+    "tv-listings",
+    "daily-puzzle"
+  ],
+  "license": "MIT",
   "private": false,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@11.12.1",
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/server.mjs",

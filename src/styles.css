@@ -357,11 +357,6 @@ button {
   margin-top: 8px;
 }
 
-.weather-unavailable {
-  margin: 0;
-  font-weight: 700;
-}
-
 .tv-listings-widget {
   width: 100%;
   margin: 0 auto;
@@ -387,8 +382,7 @@ button {
 .tv-listings-header p,
 .tv-listings-channel h3,
 .tv-listings-channel ul,
-.tv-listings-unavailable,
-.tv-listings-attribution {
+.tv-listings-unavailable {
   margin: 0;
 }
 
@@ -397,8 +391,7 @@ button {
   line-height: 1.2;
 }
 
-.tv-listings-header p,
-.tv-listings-attribution {
+.tv-listings-header p {
   color: var(--muted);
   font-size: clamp(0.98rem, 1.5vw, 1.12rem);
   font-weight: 650;
@@ -461,10 +454,6 @@ button {
 
 .tv-listings-unavailable {
   font-weight: 700;
-}
-
-.tv-listings-attribution {
-  margin-top: 4px;
 }
 
 .status-text {
@@ -839,10 +828,6 @@ button {
     margin-top: 2mm;
   }
 
-  .weather-unavailable {
-    font-size: 9pt;
-  }
-
   .tv-listings-widget {
     width: 180mm;
     max-width: 100%;
@@ -860,8 +845,7 @@ button {
     font-size: 8pt;
   }
 
-  .tv-listings-header p,
-  .tv-listings-attribution {
+  .tv-listings-header p {
     color: #000000;
     font-size: 6pt;
   }

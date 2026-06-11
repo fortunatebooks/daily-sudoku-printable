@@ -81,5 +81,5 @@ test('resolves supported route dates', () => {
   assert.equal(isSupportedRoute('/history'), true);
   assert.equal(isSupportedRoute('/assets/app.css'), false);
   assert.equal(isSupportedRoute('/puzzle/2026-02-30'), false);
-  assert.throws(() => dateForRoute('/puzzle/2026-02-30'), RangeError);
+  assert.equal(dateForRoute('/puzzle/2026-02-30'), null);
 });

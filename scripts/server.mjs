@@ -3,7 +3,12 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 import { buildSudokuPdfBytes, sudokuPdfFilename } from '../src/pdf.js';
-import { dateForRoute, generateDailySudoku, todayInLondon } from '../src/sudoku.js';
+import {
+  dateForRoute,
+  generateDailySudoku,
+  isValidDateString,
+  todayInLondon
+} from '../src/sudoku.js';
 import { loadFreelyTvListings, TV_STALE_CACHE_MS, unavailableTvListings } from '../src/tv-listings.js';
 import { loadServerWeather, STALE_CACHE_MS, WEATHER_CACHE_KEY } from '../src/weather.js';
 
@@ -23,9 +28,15 @@ const contentTypes = new Map([
   ['.txt', 'text/plain; charset=utf-8']
 ]);
 
+const securityHeaders = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()'
+};
+
 export function createRequestHandler(options = {}) {
-  const root = options.root || distRoot;
-  const fallbackRoot = options.fallbackRoot || sourceRoot;
+  const root = path.resolve(options.root || distRoot);
+  const fallbackRoot = path.resolve(options.fallbackRoot || sourceRoot);
   const weatherLoader = options.weatherLoader || loadServerWeather;
   const tvListingsLoader = options.tvListingsLoader || loadFreelyTvListings;
 
@@ -59,7 +70,7 @@ export function createRequestHandler(options = {}) {
 
       return sendStaticApp(response, url, root, fallbackRoot);
     } catch (error) {
-      response.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+      response.writeHead(500, withSecurityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
       response.end(error instanceof Error ? error.message : 'Server error');
     }
   };
@@ -68,6 +79,11 @@ export function createRequestHandler(options = {}) {
 async function sendPuzzleJson(response, pathname) {
   const datePart = pathname.replace('/api/puzzle/', '');
   const date = datePart === 'today' ? todayInLondon() : datePart;
+
+  if (!isValidDateString(date)) {
+    return sendText(response, 404, 'Not found');
+  }
+
   const puzzle = generateDailySudoku(date);
 
   return sendJson(response, 200, {
@@ -83,7 +99,7 @@ async function sendWeatherJson(response, pathname, weatherLoader) {
   const datePart = pathname.replace('/api/weather/', '');
   const date = datePart === 'today' ? todayInLondon() : datePart;
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!isValidDateString(date)) {
     return sendText(response, 404, 'Not found');
   }
 
@@ -102,7 +118,7 @@ async function sendTvListingsJson(response, pathname, tvListingsLoader) {
   const datePart = pathname.replace('/api/tv-listings/', '');
   const date = datePart === 'today' ? todayInLondon() : datePart;
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (!isValidDateString(date)) {
     return sendText(response, 404, 'Not found');
   }
 
@@ -148,9 +164,13 @@ async function sendPdf(response, url, loaders) {
   const disposition = url.searchParams.get('download') === '1' ? 'attachment' : 'inline';
 
   response.writeHead(200, {
+    ...securityHeaders,
     'content-type': 'application/pdf',
     'content-disposition': `${disposition}; filename="${filename}"`,
-    'cache-control': date === todayInLondon() ? 'public, max-age=1800' : 'public, max-age=31536000, immutable',
+    'cache-control':
+      url.pathname === '/pdf/today'
+        ? 'no-store'
+        : 'public, max-age=31536000, immutable',
     'content-length': String(bytes.byteLength)
   });
   response.end(bytes);
@@ -160,6 +180,7 @@ async function sendStaticApp(response, url, root, fallbackRoot) {
   const filePath = await resolveStaticPath(url.pathname, root, fallbackRoot);
   const body = await readFile(filePath);
   response.writeHead(200, {
+    ...securityHeaders,
     'content-type': contentTypes.get(path.extname(filePath)) || 'application/octet-stream'
   });
   response.end(body);
@@ -187,11 +208,17 @@ async function resolveStaticPath(urlPath, root, fallbackRoot) {
 
 function safePath(root, urlPath) {
   const resolved = path.resolve(root, `.${urlPath}`);
-  return resolved.startsWith(root) ? resolved : path.join(root, 'index.html');
+  return isPathInside(root, resolved) ? resolved : path.join(root, 'index.html');
+}
+
+function isPathInside(root, target) {
+  const relative = path.relative(root, target);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function sendJson(response, status, body) {
   response.writeHead(status, {
+    ...securityHeaders,
     'content-type': 'application/json; charset=utf-8',
     'cache-control': 'no-store'
   });
@@ -199,8 +226,12 @@ function sendJson(response, status, body) {
 }
 
 function sendText(response, status, body) {
-  response.writeHead(status, { 'content-type': 'text/plain; charset=utf-8' });
+  response.writeHead(status, withSecurityHeaders({ 'content-type': 'text/plain; charset=utf-8' }));
   response.end(body);
+}
+
+function withSecurityHeaders(headers) {
+  return { ...securityHeaders, ...headers };
 }
 
 function unavailableWeather(dateIso) {

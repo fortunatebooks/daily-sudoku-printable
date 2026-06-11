@@ -463,12 +463,6 @@ function normalizeWeatherDay({ daily, hourly, index, dateIso }) {
     moonLabel: `Moon: ${moonPhase}`
   };
 
-  day.pdfLines = weatherPdfLines({
-    ...day,
-    locationLabel: 'Christchurch, England',
-    attribution: 'Weather: Open-Meteo'
-  });
-
   return day;
 }
 
@@ -509,12 +503,6 @@ function normalizeWttrDay(sourceDay) {
     moonPhase,
     moonLabel: `Moon: ${moonPhase}`
   };
-
-  day.pdfLines = weatherPdfLines({
-    ...day,
-    locationLabel: 'Christchurch, England',
-    attribution: 'Weather: wttr.in'
-  });
 
   return day;
 }

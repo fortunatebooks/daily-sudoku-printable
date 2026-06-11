@@ -30,6 +30,15 @@ function assertValidDateString(dateString) {
   }
 }
 
+export function isValidDateString(dateString) {
+  try {
+    assertValidDateString(dateString);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function toDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -385,8 +394,7 @@ export function dateForRoute(route, value = new Date()) {
     return todayInLondon(value);
   }
 
-  assertValidDateString(match[1]);
-  return match[1];
+  return isValidDateString(match[1]) ? match[1] : null;
 }
 
 export function isSupportedRoute(route) {

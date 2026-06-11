@@ -69,19 +69,6 @@ export async function loadTvListings(options = {}) {
     }
     return listings;
   } catch {
-    // Static here.now previews do not run scripts/server.mjs. In that mode,
-    // /api/tv-listings returns the SPA HTML, so use the here.now proxy route.
-  }
-
-  try {
-    const rawListings = await fetchFreelyTvGuide({
-      ...options,
-      url: options.proxyUrl ?? buildFreelyProxyUrl(options.dateIso)
-    });
-    const listings = normalizeFreelyTvGuide(rawListings, { dateIso: options.dateIso });
-    writeTvListingsCache(listings, { now, storage });
-    return listings;
-  } catch {
     return getCachedTvListings({
       dateIso: options.dateIso,
       now,
@@ -163,15 +150,6 @@ export function buildFreelyTvGuideUrl(dateIso = todayIsoInTimeZone()) {
   return `${FREELY_TV_GUIDE_URL}?${params.toString()}`;
 }
 
-export function buildFreelyProxyUrl(dateIso = todayIsoInTimeZone()) {
-  const params = new URLSearchParams({
-    nid: FREELY_NID,
-    start: String(startOfUtcDayUnix(dateIso))
-  });
-
-  return `/api/freely-tv-guide?${params.toString()}`;
-}
-
 export function normalizeFreelyTvGuide(source, options = {}) {
   const dateIso = validIsoDate(options.dateIso) ? options.dateIso : todayIsoInTimeZone();
   const channels = extractFreelyChannels(source);
@@ -197,7 +175,7 @@ export function normalizeFreelyTvGuide(source, options = {}) {
         .map((event) => normalizeFreelyEvent(event))
         .filter((program) => program && program.startMs >= windowStartMs && program.startMs <= windowEndMs)
         .sort((left, right) => left.startMs - right.startMs)
-        .map(({ startMs, endMs, ...program }) => program);
+        .map(({ startMs, ...program }) => program);
 
       return {
         serviceId: fixedChannel.serviceId,
@@ -296,10 +274,7 @@ function normalizeFreelyEvent(event) {
     return null;
   }
 
-  const durationMs = parseIsoDurationMs(event?.duration) ?? 30 * 60 * 1000;
-
   return {
-    endMs: startMs + durationMs,
     startMs,
     startTime: formatZonedTime(startMs),
     title
@@ -329,27 +304,6 @@ function parseGuideTime(value) {
   const normalized = value.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
   const time = Date.parse(normalized);
   return Number.isFinite(time) ? time : null;
-}
-
-function parseIsoDurationMs(value) {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const match = value.match(/^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const [, days, hours, minutes, seconds] = match;
-  const totalSeconds =
-    Number(days || 0) * 86400 +
-    Number(hours || 0) * 3600 +
-    Number(minutes || 0) * 60 +
-    Number(seconds || 0);
-
-  return totalSeconds > 0 ? totalSeconds * 1000 : null;
 }
 
 function cleanTitle(value) {

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  buildFreelyProxyUrl,
   buildFreelyTvGuideUrl,
   formatTvDisplayTime,
   getCachedTvListings,
@@ -39,35 +38,34 @@ test('builds the Freely URL with fixed personal-use nid and UTC day start', () =
   const url = buildFreelyTvGuideUrl('2026-06-11');
 
   assert.equal(url, 'https://www.freely.co.uk/api/tv-guide?nid=64865&start=1781136000');
-  assert.equal(buildFreelyProxyUrl('2026-06-11'), '/api/freely-tv-guide?nid=64865&start=1781136000');
 });
 
-test('browser loader falls back to here.now Freely proxy when server API returns SPA HTML', async () => {
+test('browser loader uses stale cache when the server TV route is unavailable', async () => {
   const storage = createMemoryStorage();
+  const cachedListings = normalizeFreelyTvGuide(sampleFreelyGuide(), { dateIso: '2026-06-11' });
+  const now = Date.UTC(2026, 5, 11, 12);
+  storage.setItem(
+    TV_LISTINGS_CACHE_KEY,
+    JSON.stringify({
+      savedAt: now - 8 * 60 * 60 * 1000,
+      data: cachedListings
+    })
+  );
   const requestedUrls = [];
   const listings = await loadTvListings({
     dateIso: '2026-06-11',
+    now,
     storage,
     fetchImpl: async (url) => {
       requestedUrls.push(url);
-      if (String(url).startsWith('/api/tv-listings/')) {
-        return responseStub({
-          body: '<!doctype html><title>Jenny</title>',
-          contentType: 'text/html; charset=utf-8'
-        });
-      }
-
       return responseStub({
-        body: sampleFreelyGuide(),
-        contentType: 'application/json'
+        body: '<!doctype html><title>Jenny</title>',
+        contentType: 'text/html; charset=utf-8'
       });
     }
   });
 
-  assert.deepEqual(requestedUrls, [
-    '/api/tv-listings/2026-06-11',
-    '/api/freely-tv-guide?nid=64865&start=1781136000'
-  ]);
+  assert.deepEqual(requestedUrls, ['/api/tv-listings/2026-06-11']);
   assert.equal(listings.channels[0].programs[0].title, 'EastEnders');
 });
 

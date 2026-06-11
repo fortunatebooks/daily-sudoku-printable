@@ -22,7 +22,37 @@ test('server returns raw PDFs for automation-friendly routes', async () => {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-type'), 'application/pdf');
     assert.match(response.headers.get('content-disposition'), /filename="sudoku-2026-06-11\.pdf"/);
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(text, '%PDF-1.4');
+  } finally {
+    await close(server);
+  }
+});
+
+test('server keeps today PDFs fresh and rejects invalid dates cleanly', async () => {
+  const server = createServer(createRequestHandler({
+    root: 'src',
+    fallbackRoot: 'src',
+    weatherLoader: async () => stubWeather(),
+    tvListingsLoader: async () => stubTvListings('2026-06-11')
+  }));
+  await listen(server);
+
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const todayPdf = await fetch(`${baseUrl}/pdf/today`);
+    const invalidPuzzle = await fetch(`${baseUrl}/api/puzzle/not-a-date`);
+    const invalidWeather = await fetch(`${baseUrl}/api/weather/2026-02-31`);
+    const invalidTv = await fetch(`${baseUrl}/api/tv-listings/2026-02-31`);
+    const invalidPdf = await fetch(`${baseUrl}/pdf/2026-02-31`);
+
+    assert.equal(todayPdf.status, 200);
+    assert.equal(todayPdf.headers.get('cache-control'), 'no-store');
+    assert.equal(invalidPuzzle.status, 404);
+    assert.equal(invalidWeather.status, 404);
+    assert.equal(invalidTv.status, 404);
+    assert.equal(invalidPdf.status, 404);
   } finally {
     await close(server);
   }
@@ -39,11 +69,21 @@ test('server exposes puzzle JSON and health checks', async () => {
 
   try {
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
-    const health = await fetch(`${baseUrl}/health`).then((response) => response.json());
-    const puzzle = await fetch(`${baseUrl}/api/puzzle/2026-06-11`).then((response) => response.json());
-    const weather = await fetch(`${baseUrl}/api/weather/2026-06-11`).then((response) => response.json());
-    const tvListings = await fetch(`${baseUrl}/api/tv-listings/2026-06-11`).then((response) => response.json());
+    const healthResponse = await fetch(`${baseUrl}/health`);
+    const puzzleResponse = await fetch(`${baseUrl}/api/puzzle/2026-06-11`);
+    const weatherResponse = await fetch(`${baseUrl}/api/weather/2026-06-11`);
+    const tvListingsResponse = await fetch(`${baseUrl}/api/tv-listings/2026-06-11`);
+    const health = await healthResponse.json();
+    const puzzle = await puzzleResponse.json();
+    const weather = await weatherResponse.json();
+    const tvListings = await tvListingsResponse.json();
 
+    assert.equal(healthResponse.status, 200);
+    assert.match(healthResponse.headers.get('content-type'), /application\/json/);
+    assert.equal(healthResponse.headers.get('cache-control'), 'no-store');
+    assert.equal(puzzleResponse.status, 200);
+    assert.match(puzzleResponse.headers.get('content-type'), /application\/json/);
+    assert.equal(puzzleResponse.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(health.ok, true);
     assert.equal(health.service, 'jennys-sudoku');
     assert.equal(puzzle.date, '2026-06-11');
@@ -54,6 +94,34 @@ test('server exposes puzzle JSON and health checks', async () => {
     assert.equal(tvListings.dateIso, '2026-06-11');
     assert.equal(tvListings.channels[0].serviceId, '37123');
     assert.equal(tvListings.channels[0].programs[0].title, 'EastEnders');
+  } finally {
+    await close(server);
+  }
+});
+
+test('server falls back to the SPA without serving files outside the app root', async () => {
+  const server = createServer(createRequestHandler({
+    root: 'src',
+    fallbackRoot: 'src',
+    weatherLoader: async () => stubWeather(),
+    tvListingsLoader: async () => stubTvListings('2026-06-11')
+  }));
+  await listen(server);
+
+  try {
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const routeResponse = await fetch(`${baseUrl}/puzzle/2026-06-11`);
+    const traversalResponse = await fetch(`${baseUrl}/%2e%2e/package.json`);
+    const routeText = await routeResponse.text();
+    const traversalText = await traversalResponse.text();
+
+    assert.equal(routeResponse.status, 200);
+    assert.match(routeResponse.headers.get('content-type'), /text\/html/);
+    assert.match(routeText, /Jenny's Sudoku/);
+    assert.equal(traversalResponse.status, 200);
+    assert.match(traversalResponse.headers.get('content-type'), /text\/html/);
+    assert.match(traversalText, /Jenny's Sudoku/);
+    assert.doesNotMatch(traversalText, /"name": "daily-sudoku-printable"/);
   } finally {
     await close(server);
   }

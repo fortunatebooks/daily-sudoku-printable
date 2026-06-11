@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Daily Sudoku</title>
+    <meta
+      name="description"
+      content="A daily printable Sudoku puzzle for the UK calendar day."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <nav class="day-nav no-print" aria-label="Puzzle dates">
+        <a class="nav-link" data-action="previous" href="/">Previous Day</a>
+        <a class="nav-link" data-action="today" href="/">Today</a>
+        <button class="nav-link" data-action="history" type="button">History</button>
+      </nav>
+
+      <main class="print-surface" aria-live="polite">
+        <header class="page-heading">
+          <h1>Daily Sudoku</h1>
+          <p id="dateText" class="date-text">Loading date...</p>
+        </header>
+
+        <section class="primary-actions no-print" aria-label="Puzzle actions">
+          <button class="action-button action-button-print" data-action="print" type="button">
+            Print
+          </button>
+          <button class="action-button action-button-pdf" data-action="pdf" type="button">
+            Download PDF
+          </button>
+        </section>
+
+        <section class="puzzle-section" aria-labelledby="puzzleLabel">
+          <h2 id="puzzleLabel" class="visually-hidden">Sudoku puzzle</h2>
+          <div id="sudokuGrid" class="sudoku-grid" role="grid" aria-label="Sudoku puzzle"></div>
+        </section>
+      </main>
+
+      <p id="statusText" class="status-text no-print" role="status"></p>
+    </div>
+
+    <dialog id="historyDialog" class="history-dialog">
+      <form method="dialog" class="dialog-panel">
+        <header class="dialog-header">
+          <h2>Recent puzzles</h2>
+          <button class="dialog-close" type="submit" aria-label="Close">Close</button>
+        </header>
+        <div id="historyList" class="history-list"></div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

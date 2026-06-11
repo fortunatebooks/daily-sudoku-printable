@@ -1,3 +1,6 @@
+import { weatherPdfLines } from './weather.js';
+import { tvListingsPdfLines } from './tv-listings.js';
+
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
 const PDF_MIME_TYPE = 'application/pdf';
@@ -9,8 +12,8 @@ export function sudokuPdfFilename(displayDate = new Date()) {
   return `sudoku-${dateKeyFrom(displayDate)}.pdf`;
 }
 
-export function buildSudokuPdf(puzzleData, displayDate = new Date()) {
-  const bytes = buildSudokuPdfBytes(puzzleData, displayDate);
+export function buildSudokuPdf(puzzleData, displayDate = new Date(), options = {}) {
+  const bytes = buildSudokuPdfBytes(puzzleData, displayDate, options);
 
   if (typeof window !== 'undefined' && typeof Blob !== 'undefined') {
     return new Blob([bytes], { type: PDF_MIME_TYPE });
@@ -19,38 +22,172 @@ export function buildSudokuPdf(puzzleData, displayDate = new Date()) {
   return bytes;
 }
 
-export function buildSudokuPdfBytes(puzzleData, displayDate = new Date()) {
-  const givens = extractGivens(puzzleData);
-  const content = buildPageContent(givens, displayDate);
+export function buildSudokuPdfBytes(puzzleData, displayDate = new Date(), options = {}) {
+  const resolved = resolvePdfInputs(puzzleData, displayDate, options);
+  const givens = extractGivens(resolved.puzzleData);
+  const content = buildPageContent(givens, resolved.displayDate, resolved.options);
 
   return encodeAscii(buildPdfDocument(content));
 }
 
 export default buildSudokuPdf;
 
-function buildPageContent(givens, displayDate) {
-  const gridSize = 510;
+function resolvePdfInputs(puzzleData, displayDate, options) {
+  if (puzzleData && typeof puzzleData === 'object' && !Array.isArray(puzzleData) && 'puzzle' in puzzleData) {
+    return {
+      puzzleData,
+      displayDate: puzzleData.displayDate || puzzleData.formattedDate || puzzleData.dateIso || puzzleData.date || displayDate,
+      options: {
+        ...options,
+        title: puzzleData.title || options.title,
+        weather: puzzleData.weather || options.weather,
+        tvListings: puzzleData.tvListings || options.tvListings
+      }
+    };
+  }
+
+  return { puzzleData, displayDate, options };
+}
+
+function buildPageContent(givens, displayDate, options = {}) {
+  const gridSize = 480;
   const cellSize = gridSize / 9;
   const gridX = (A4_WIDTH - gridSize) / 2;
-  const gridY = (A4_HEIGHT - gridSize) / 2;
-  const titleY = A4_HEIGHT - 62;
-  const dateY = titleY - 28;
-  const numberSize = 33;
+  const gridY = 270;
+  const titleY = A4_HEIGHT - 36;
+  const dateY = titleY - 24;
+  const numberSize = 32;
   const operations = [];
 
   operations.push('q');
   operations.push('0 0 0 RG');
   operations.push('0 0 0 rg');
 
-  drawText(operations, 'Daily Sudoku', A4_WIDTH / 2, titleY, 28, 'F2', 'center');
+  drawText(operations, options.title || "Jenny's Sudoku", A4_WIDTH / 2, titleY, 28, 'F2', 'center');
   drawText(operations, displayDateLabel(displayDate), A4_WIDTH / 2, dateY, 14, 'F1', 'center');
 
   drawGrid(operations, gridX, gridY, gridSize, cellSize);
   drawGivens(operations, givens, gridX, gridY, cellSize, numberSize);
+  drawInfoBoxes(operations, options, gridX, 38, gridSize, 210);
 
   operations.push('Q');
 
   return `${operations.join('\n')}\n`;
+}
+
+function drawInfoBoxes(operations, options, x, y, width, height) {
+  const weatherLines = weatherPdfLines(options.weather);
+  const tvLines = tvListingsPdfLines(options.tvListings);
+
+  if (weatherLines.length === 0 && tvLines.length === 0) {
+    return;
+  }
+
+  if (weatherLines.length > 0 && tvLines.length > 0) {
+    const gap = 8;
+    const weatherHeight = 56;
+    const tvHeight = height - weatherHeight - gap;
+    const weatherY = y + tvHeight + gap;
+    drawWeatherBox(operations, options.weather, weatherLines, x, weatherY, width, weatherHeight);
+    drawTvListingsBox(operations, options.tvListings, tvLines, x, y, width, tvHeight);
+    return;
+  }
+
+  if (tvLines.length > 0) {
+    drawTvListingsBox(operations, options.tvListings, tvLines, x, y, width, height);
+    return;
+  }
+
+  drawWeatherBox(operations, options.weather, weatherLines, x, y, width, height);
+}
+
+function drawLineBox(operations, x, y, width, height) {
+  drawLine(operations, x, y, x + width, y, 0.6);
+  drawLine(operations, x, y + height, x + width, y + height, 0.6);
+  drawLine(operations, x, y, x, y + height, 0.6);
+  drawLine(operations, x + width, y, x + width, y + height, 0.6);
+}
+
+function drawInfoLines(operations, lines, x, y, width, lineGap, maxLines = 8) {
+  const textLines = lines.slice(0, maxLines);
+  textLines.forEach((line, index) => {
+    const font = index === 0 ? 'F2' : 'F1';
+    const size = index === 0 ? 7.6 : 5.7;
+    drawText(operations, truncatePdfText(line, width, size), x, y - index * lineGap, size, font, 'left');
+  });
+}
+
+function drawWeatherBox(operations, weather, fallbackLines, x, y, width, height) {
+  drawLineBox(operations, x, y, width, height);
+
+  if (!weather || weather.unavailable || !Array.isArray(weather.days) || weather.days.length === 0) {
+    drawInfoLines(operations, fallbackLines, x + 10, y + height - 16, width - 20, 8, 5);
+    return;
+  }
+
+  const days = weather.days.slice(0, 3);
+  const gutter = 10;
+  const dayWidth = (width - 20 - gutter * (days.length - 1)) / days.length;
+  const dayTop = y + height - 13;
+
+  days.forEach((day, index) => {
+    const dayX = x + 10 + index * (dayWidth + gutter);
+    const iconX = dayX + 10;
+    const iconY = dayTop - 20;
+    const label = index === 0 ? 'Today' : shortPdfDayLabel(day.dateIso);
+    const rain = stripPdfPrefix(day.rainyPeriodsLabel);
+    const sun = `${day.sunrise || '--:--'}-${day.sunset || '--:--'}`;
+
+    drawWeatherIcon(operations, day.icon, iconX, iconY, 10);
+    drawText(operations, label, dayX + 29, dayTop, 7.0, 'F2', 'left');
+    drawText(operations, truncatePdfText(day.label || 'Forecast', dayWidth - 29, 6.4), dayX + 29, dayTop - 8.8, 6.4, 'F1', 'left');
+    drawText(operations, `${shortTemperature(day)}   Rain ${rain}`, dayX + 29, dayTop - 17.4, 6.2, 'F1', 'left');
+    drawText(operations, `Sun ${sun}   Moon ${day.moonPhase || ''}`, dayX + 29, dayTop - 26, 6.2, 'F1', 'left');
+  });
+}
+
+function drawTvListingsBox(operations, tvListings, fallbackLines, x, y, width, height) {
+  drawLineBox(operations, x, y, width, height);
+
+  if (!tvListings || tvListings.unavailable || !Array.isArray(tvListings.channels)) {
+    drawInfoLines(operations, fallbackLines, x + 10, y + height - 16, width - 20, 7.2, 6);
+    return;
+  }
+
+  drawText(
+    operations,
+    `Tonight on TV ${tvListings.windowLabel || '19:00-23:00'}`,
+    x + 10,
+    y + height - 15,
+    8.2,
+    'F2',
+    'left'
+  );
+
+  const channels = tvListings.channels.slice(0, 5);
+  const gutter = 9;
+  const columnWidth = (width - 20 - gutter * (channels.length - 1)) / channels.length;
+  const headingY = y + height - 31;
+
+  channels.forEach((channel, index) => {
+    const columnX = x + 10 + index * (columnWidth + gutter);
+    drawText(operations, channel.name || 'Channel', columnX, headingY, 7.0, 'F2', 'left');
+
+    const programs = Array.isArray(channel.programs) ? channel.programs : [];
+    const entries = programs.length > 0 ? programs : [{ startTime: '', title: 'No listings' }];
+    entries.slice(0, 8).forEach((program, programIndex) => {
+      const prefix = program.startTime ? `${program.startTime} ` : '';
+      drawText(
+        operations,
+        truncatePdfText(`${prefix}${program.title || 'Untitled'}`, columnWidth, 6.0),
+        columnX,
+        headingY - 9 - programIndex * 7.3,
+        6.0,
+        'F1',
+        'left'
+      );
+    });
+  });
 }
 
 function drawGrid(operations, gridX, gridY, gridSize, cellSize) {
@@ -85,6 +222,64 @@ function drawGivens(operations, givens, gridX, gridY, cellSize, numberSize) {
 
     drawText(operations, value, centerX, baselineY, numberSize, 'F1', 'center');
   });
+}
+
+function drawWeatherIcon(operations, icon, x, y, size) {
+  if (icon === 'sun') {
+    drawSunIcon(operations, x, y, size);
+    return;
+  }
+
+  if (icon === 'rain' || icon === 'storm' || icon === 'snow') {
+    drawCloudIcon(operations, x, y + 2, size);
+    drawRainLines(operations, x, y - 9, size);
+    return;
+  }
+
+  if (icon === 'fog') {
+    drawCloudIcon(operations, x, y + 2, size);
+    drawLine(operations, x - size, y - 8, x + size, y - 8, 0.8);
+    drawLine(operations, x - size * 0.7, y - 12, x + size * 0.7, y - 12, 0.8);
+    return;
+  }
+
+  drawCloudIcon(operations, x, y + 2, size);
+}
+
+function drawSunIcon(operations, x, y, size) {
+  drawCircle(operations, x, y, size * 0.52, 1.0);
+
+  for (let index = 0; index < 8; index += 1) {
+    const angle = (Math.PI * 2 * index) / 8;
+    const inner = size * 0.78;
+    const outer = size * 1.1;
+    drawLine(
+      operations,
+      x + Math.cos(angle) * inner,
+      y + Math.sin(angle) * inner,
+      x + Math.cos(angle) * outer,
+      y + Math.sin(angle) * outer,
+      0.9
+    );
+  }
+}
+
+function drawCloudIcon(operations, x, y, size) {
+  drawCircle(operations, x - size * 0.45, y - size * 0.1, size * 0.38, 0.9);
+  drawCircle(operations, x, y + size * 0.18, size * 0.48, 0.9);
+  drawCircle(operations, x + size * 0.48, y - size * 0.05, size * 0.36, 0.9);
+  drawLine(operations, x - size * 0.85, y - size * 0.48, x + size * 0.86, y - size * 0.48, 0.9);
+}
+
+function drawRainLines(operations, x, y, size) {
+  [-0.45, 0, 0.45].forEach((offset) => {
+    drawLine(operations, x + size * offset, y + 3, x + size * offset - 1.8, y - 3, 0.9);
+  });
+}
+
+function drawCircle(operations, x, y, radius, width) {
+  const c = radius * 0.5522847498;
+  operations.push(`${formatNumber(width)} w ${formatNumber(x + radius)} ${formatNumber(y)} m ${formatNumber(x + radius)} ${formatNumber(y + c)} ${formatNumber(x + c)} ${formatNumber(y + radius)} ${formatNumber(x)} ${formatNumber(y + radius)} c ${formatNumber(x - c)} ${formatNumber(y + radius)} ${formatNumber(x - radius)} ${formatNumber(y + c)} ${formatNumber(x - radius)} ${formatNumber(y)} c ${formatNumber(x - radius)} ${formatNumber(y - c)} ${formatNumber(x - c)} ${formatNumber(y - radius)} ${formatNumber(x)} ${formatNumber(y - radius)} c ${formatNumber(x + c)} ${formatNumber(y - radius)} ${formatNumber(x + radius)} ${formatNumber(y - c)} ${formatNumber(x + radius)} ${formatNumber(y)} c S`);
 }
 
 function drawLine(operations, x1, y1, x2, y2, width) {
@@ -278,6 +473,30 @@ function formatDateLabel(date) {
   }).format(date);
 }
 
+function shortPdfDayLabel(dateIso) {
+  if (typeof dateIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    return '';
+  }
+
+  const [year, month, day] = dateIso.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC',
+    weekday: 'short'
+  }).format(new Date(Date.UTC(year, month - 1, day, 12)));
+}
+
+function shortTemperature(day) {
+  const high = day?.highC == null ? '--' : Math.round(day.highC);
+  const low = day?.lowC == null ? '--' : Math.round(day.lowC);
+  return `${high}/${low} C`;
+}
+
+function stripPdfPrefix(value) {
+  return String(value || '').replace(/^[^:]+:\s*/, '') || 'none expected';
+}
+
 function cleanPdfText(text) {
   return String(text).replace(/\s+/g, ' ').replace(/[^\x20-\x7E]/g, '?').trim();
 }
@@ -308,6 +527,17 @@ function estimateHelveticaWidth(text, size) {
   }
 
   return units * size;
+}
+
+function truncatePdfText(value, maxWidth, size) {
+  let text = cleanPdfText(value);
+
+  while (text.length > 3 && estimateHelveticaWidth(text, size) > maxWidth) {
+    text = text.slice(0, -4).trimEnd();
+    text = `${text}...`;
+  }
+
+  return text;
 }
 
 function formatNumber(value) {

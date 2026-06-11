@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Daily Sudoku</title>
+    <title>Jenny's Sudoku</title>
     <meta
       name="description"
       content="A daily printable Sudoku puzzle for the UK calendar day."
@@ -20,7 +20,7 @@
 
       <main class="print-surface" aria-live="polite">
         <header class="page-heading">
-          <h1>Daily Sudoku</h1>
+          <h1>Jenny's Sudoku</h1>
           <p id="dateText" class="date-text">Loading date...</p>
         </header>
 
@@ -37,6 +37,20 @@
           <h2 id="puzzleLabel" class="visually-hidden">Sudoku puzzle</h2>
           <div id="sudokuGrid" class="sudoku-grid" role="grid" aria-label="Sudoku puzzle"></div>
         </section>
+
+        <section
+          id="weatherWidget"
+          class="weather-widget"
+          aria-label="Christchurch weather"
+          hidden
+        ></section>
+
+        <section
+          id="tvListingsWidget"
+          class="tv-listings-widget"
+          aria-label="Tonight's TV listings"
+          hidden
+        ></section>
       </main>
 
       <p id="statusText" class="status-text no-print" role="status"></p>

@@ -1,3 +1,6 @@
+import { getCachedWeather, loadWeather } from './weather.js';
+import { getCachedTvListings, loadTvListings, unavailableTvListings } from './tv-listings.js';
+
 const PUZZLE_EXPORTS = [
   'getPuzzleForDate',
   'puzzleForDate',
@@ -55,6 +58,12 @@ const appState = {
   route: null,
   puzzle: null,
   cells: Array(81).fill(null),
+  weather: null,
+  weatherRouteKey: '',
+  weatherPromise: null,
+  tvListings: null,
+  tvRouteKey: '',
+  tvPromise: null,
   lastAutoPdfRoute: ''
 };
 
@@ -68,7 +77,9 @@ const elements = {
   print: document.querySelector('[data-action="print"]'),
   pdf: document.querySelector('[data-action="pdf"]'),
   historyDialog: document.querySelector('#historyDialog'),
-  historyList: document.querySelector('#historyList')
+  historyList: document.querySelector('#historyList'),
+  weather: document.querySelector('#weatherWidget'),
+  tvListings: document.querySelector('#tvListingsWidget')
 };
 
 const formatDisplayDate = new Intl.DateTimeFormat('en-GB', {
@@ -140,6 +151,10 @@ async function renderRoute() {
   renderDate(route.dateIso);
   renderEmptyGrid();
   renderHistory();
+  renderWeather(null);
+  renderTvListings(null);
+  loadWeatherForRoute(route);
+  loadTvListingsForRoute(route);
   syncHistoryDialog(route.mode === 'history');
 
   try {
@@ -158,7 +173,9 @@ async function renderRoute() {
     const routeKey = `${route.mode}:${route.dateIso}:${window.location.pathname}`;
     if (appState.lastAutoPdfRoute !== routeKey) {
       appState.lastAutoPdfRoute = routeKey;
-      await downloadCurrentPdf();
+      const weather = await waitForWeatherForPdf(routeKey, route.dateIso);
+      const tvListings = await waitForTvListingsForPdf(routeKey, route.dateIso);
+      await downloadCurrentPdf({ weather, tvListings });
     }
   }
 }
@@ -210,7 +227,7 @@ function resolveRoute(pathname) {
 function renderDate(dateIso) {
   const date = parseIsoDate(dateIso);
   const displayDate = formatDisplayDate.format(date);
-  document.title = `Daily Sudoku - ${displayDate}`;
+  document.title = `Jenny's Sudoku - ${displayDate}`;
   elements.dateText.textContent = displayDate;
   elements.previous.href = `/puzzle/${addDays(dateIso, -1)}`;
   elements.today.href = '/';
@@ -257,6 +274,287 @@ function renderHistory() {
   });
 
   elements.historyList.replaceChildren(fragment);
+}
+
+function loadWeatherForRoute(route) {
+  const routeKey = `${route.mode}:${route.dateIso}:${window.location.pathname}`;
+  appState.weatherRouteKey = routeKey;
+
+  const cachedWeather = getCachedWeather({ dateIso: route.dateIso });
+  if (cachedWeather) {
+    appState.weather = cachedWeather;
+    renderWeather(cachedWeather);
+  }
+
+  appState.weatherPromise = loadWeather({ dateIso: route.dateIso })
+    .then((weather) => {
+      if (appState.weatherRouteKey !== routeKey) {
+        return null;
+      }
+
+      if (!weather || weather.unavailable) {
+        renderWeatherUnavailable();
+        return null;
+      }
+
+      appState.weather = weather;
+      renderWeather(weather);
+      return weather;
+    })
+    .catch(() => {
+      if (appState.weatherRouteKey === routeKey) {
+        renderWeatherUnavailable();
+      }
+      return null;
+    });
+}
+
+function renderWeather(weather) {
+  if (!elements.weather) {
+    return;
+  }
+
+  elements.weather.replaceChildren();
+  appState.weather = weather;
+
+  if (!weather) {
+    elements.weather.hidden = true;
+    return;
+  }
+
+  if (weather.unavailable) {
+    renderWeatherUnavailable();
+    return;
+  }
+
+  elements.weather.hidden = false;
+  const days = Array.isArray(weather.days) && weather.days.length > 0 ? weather.days.slice(0, 4) : [weather];
+
+  const summary = document.createElement('div');
+  summary.className = 'weather-summary';
+
+  const icon = document.createElement('span');
+  icon.className = 'weather-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.innerHTML = weatherIconSvg(weather.icon);
+
+  const header = document.createElement('div');
+  header.className = 'weather-header';
+
+  const location = document.createElement('p');
+  location.className = 'weather-location';
+  location.textContent = weather.locationLabel || 'Christchurch, England';
+
+  const label = document.createElement('p');
+  label.className = 'weather-label';
+  label.textContent = 'Today and next few days';
+
+  header.append(location, label);
+  summary.append(icon, header);
+
+  const forecast = document.createElement('div');
+  forecast.className = 'weather-days';
+
+  days.forEach((day, index) => {
+    const card = document.createElement('article');
+    card.className = 'weather-day';
+
+    const dayHeading = document.createElement('h3');
+    dayHeading.textContent = index === 0 ? 'Today' : weatherDayLabel(day.dateIso);
+
+    const dayIcon = document.createElement('span');
+    dayIcon.className = 'weather-day-icon';
+    dayIcon.setAttribute('aria-hidden', 'true');
+    dayIcon.innerHTML = weatherIconSvg(day.icon);
+
+    const dayLabel = document.createElement('p');
+    dayLabel.className = 'weather-day-label';
+    dayLabel.textContent = day.label || 'Forecast';
+
+    const dayDetails = document.createElement('dl');
+    dayDetails.className = 'weather-details';
+    appendWeatherDetail(dayDetails, 'Temp', day.temperatureLabel);
+    appendWeatherDetail(dayDetails, 'Sunny', stripDetailPrefix(day.sunnyPeriodsLabel));
+    appendWeatherDetail(dayDetails, 'Rain', stripDetailPrefix(day.rainyPeriodsLabel));
+    appendWeatherDetail(dayDetails, 'Sun', day.sunLabel);
+    appendWeatherDetail(dayDetails, 'Moon', day.moonPhase);
+
+    card.append(dayHeading, dayIcon, dayLabel, dayDetails);
+    forecast.append(card);
+  });
+
+  const attribution = document.createElement('p');
+  attribution.className = 'weather-attribution';
+  attribution.textContent = weather.attribution || 'Weather: Open-Meteo';
+
+  elements.weather.append(summary, forecast, attribution);
+}
+
+function renderWeatherUnavailable() {
+  if (!elements.weather) {
+    return;
+  }
+
+  appState.weather = null;
+  elements.weather.replaceChildren();
+  elements.weather.hidden = true;
+}
+
+function loadTvListingsForRoute(route) {
+  const routeKey = `${route.mode}:${route.dateIso}:${window.location.pathname}`;
+  appState.tvRouteKey = routeKey;
+
+  const cachedListings = getCachedTvListings({ dateIso: route.dateIso });
+  if (cachedListings) {
+    appState.tvListings = cachedListings;
+    renderTvListings(cachedListings);
+  }
+
+  appState.tvPromise = loadTvListings({ dateIso: route.dateIso })
+    .then((tvListings) => {
+      if (appState.tvRouteKey !== routeKey) {
+        return null;
+      }
+
+      if (!tvListings || tvListings.unavailable) {
+        renderTvListingsUnavailable(route.dateIso);
+        return null;
+      }
+
+      appState.tvListings = tvListings;
+      renderTvListings(tvListings);
+      return tvListings;
+    })
+    .catch(() => {
+      if (appState.tvRouteKey === routeKey) {
+        renderTvListingsUnavailable(route.dateIso);
+      }
+      return null;
+    });
+}
+
+function renderTvListings(tvListings) {
+  if (!elements.tvListings) {
+    return;
+  }
+
+  elements.tvListings.replaceChildren();
+  appState.tvListings = tvListings;
+
+  if (!tvListings) {
+    elements.tvListings.hidden = true;
+    return;
+  }
+
+  elements.tvListings.hidden = false;
+
+  const header = document.createElement('div');
+  header.className = 'tv-listings-header';
+
+  const title = document.createElement('h2');
+  title.textContent = 'Tonight on TV';
+
+  const meta = document.createElement('p');
+  meta.textContent = `${tvListings.windowLabel || '19:00-23:00'} - ${tvListings.sourceLabel || 'TV: Freely'}`;
+
+  header.append(title, meta);
+
+  const channels = document.createElement('div');
+  channels.className = 'tv-listings-channels';
+
+  (tvListings.channels || []).forEach((channel) => {
+    const channelBlock = document.createElement('section');
+    channelBlock.className = 'tv-listings-channel';
+
+    const channelName = document.createElement('h3');
+    channelName.textContent = channel.name;
+
+    const list = document.createElement('ul');
+    const programs = Array.isArray(channel.programs) ? channel.programs : [];
+
+    if (programs.length === 0) {
+      const item = document.createElement('li');
+      item.className = 'tv-listing-empty';
+      item.textContent = 'No listings';
+      list.append(item);
+    } else {
+      programs.forEach((program) => {
+        const item = document.createElement('li');
+        const time = document.createElement('time');
+        time.textContent = program.startTime;
+        const name = document.createElement('span');
+        name.textContent = program.title;
+        item.append(time, name);
+        list.append(item);
+      });
+    }
+
+    channelBlock.append(channelName, list);
+    channels.append(channelBlock);
+  });
+
+  elements.tvListings.append(header, channels);
+}
+
+function renderTvListingsUnavailable(dateIso) {
+  if (!elements.tvListings) {
+    return;
+  }
+
+  appState.tvListings = unavailableTvListings(dateIso);
+  elements.tvListings.hidden = false;
+  elements.tvListings.replaceChildren();
+
+  const message = document.createElement('p');
+  message.className = 'tv-listings-unavailable';
+  message.textContent = 'Tonight\'s TV listings are unavailable right now.';
+
+  const attribution = document.createElement('p');
+  attribution.className = 'tv-listings-attribution';
+  attribution.textContent = 'TV: Freely';
+
+  elements.tvListings.append(message, attribution);
+}
+
+function appendWeatherDetail(parent, term, description) {
+  if (!description) {
+    return;
+  }
+
+  const item = document.createElement('div');
+  item.className = 'weather-detail';
+
+  const dt = document.createElement('dt');
+  dt.textContent = term;
+
+  const dd = document.createElement('dd');
+  dd.textContent = description;
+
+  item.append(dt, dd);
+  parent.append(item);
+}
+
+function stripDetailPrefix(value) {
+  return String(value || '').replace(/^[^:]+:\s*/, '');
+}
+
+function weatherIconSvg(icon) {
+  const icons = {
+    cloud:
+      '<svg viewBox="0 0 48 48" focusable="false"><path d="M15 34h21a8 8 0 0 0 0-16 12 12 0 0 0-23-2 9 9 0 0 0 2 18Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
+    fog:
+      '<svg viewBox="0 0 48 48" focusable="false"><path d="M15 28h21a7 7 0 0 0 0-14 11 11 0 0 0-21-2 8 8 0 0 0 0 16Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M9 35h30M13 41h22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+    rain:
+      '<svg viewBox="0 0 48 48" focusable="false"><path d="M15 28h21a7 7 0 0 0 0-14 11 11 0 0 0-21-2 8 8 0 0 0 0 16Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M17 34v6M25 34v6M33 34v6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>',
+    snow:
+      '<svg viewBox="0 0 48 48" focusable="false"><path d="M15 28h21a7 7 0 0 0 0-14 11 11 0 0 0-21-2 8 8 0 0 0 0 16Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M24 33v9M20 36l8 4M28 36l-8 4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>',
+    storm:
+      '<svg viewBox="0 0 48 48" focusable="false"><path d="M15 28h21a7 7 0 0 0 0-14 11 11 0 0 0-21-2 8 8 0 0 0 0 16Z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="m25 31-5 9h7l-3 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    sun:
+      '<svg viewBox="0 0 48 48" focusable="false"><circle cx="24" cy="24" r="8" fill="none" stroke="currentColor" stroke-width="3"/><path d="M24 5v6M24 37v6M5 24h6M37 24h6M10.5 10.5l4.25 4.25M33.25 33.25l4.25 4.25M37.5 10.5l-4.25 4.25M14.75 33.25l-4.25 4.25" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>'
+  };
+
+  return icons[icon] || icons.cloud;
 }
 
 function syncHistoryDialog(shouldOpen) {
@@ -313,9 +611,59 @@ async function callPuzzleGenerator(generator, dateIso) {
   throw lastError || new Error('The puzzle generator returned an invalid grid.');
 }
 
-async function downloadCurrentPdf() {
+async function waitForWeatherForPdf(routeKey, dateIso) {
+  const cachedWeather = getCachedWeather({ dateIso });
+  if (cachedWeather) {
+    return cachedWeather;
+  }
+
+  const weatherPromise = appState.weatherPromise;
+  if (!weatherPromise) {
+    return null;
+  }
+
+  const timeout = new Promise((resolve) => {
+    window.setTimeout(() => resolve(null), 4200);
+  });
+  const weather = await Promise.race([weatherPromise, timeout]);
+
+  if (appState.weatherRouteKey !== routeKey) {
+    return null;
+  }
+
+  return weather;
+}
+
+async function waitForTvListingsForPdf(routeKey, dateIso) {
+  const cachedListings = getCachedTvListings({ dateIso });
+  if (cachedListings) {
+    return cachedListings;
+  }
+
+  const tvPromise = appState.tvPromise;
+  if (!tvPromise) {
+    return null;
+  }
+
+  const timeout = new Promise((resolve) => {
+    window.setTimeout(() => resolve(null), 4200);
+  });
+  const tvListings = await Promise.race([tvPromise, timeout]);
+
+  if (appState.tvRouteKey !== routeKey) {
+    return null;
+  }
+
+  return tvListings;
+}
+
+async function downloadCurrentPdf(overrides = undefined) {
   const route = appState.route || resolveRoute(window.location.pathname);
   const dateIso = route.dateIso;
+  const hasStructuredOverrides =
+    overrides && typeof overrides === 'object' && ('weather' in overrides || 'tvListings' in overrides);
+  const overrideWeather = hasStructuredOverrides ? overrides.weather : overrides;
+  const overrideTvListings = hasStructuredOverrides ? overrides.tvListings : undefined;
 
   try {
     if (appState.puzzle == null) {
@@ -338,9 +686,22 @@ async function downloadCurrentPdf() {
       isoDate: dateIso,
       displayDate,
       formattedDate: displayDate,
-      title: 'Daily Sudoku',
+      title: "Jenny's Sudoku",
       puzzle: appState.puzzle,
       cells: appState.cells,
+      weather:
+        overrideWeather ||
+        appState.weather ||
+        getCachedWeather({ dateIso }) || {
+          unavailable: true,
+          locationLabel: 'Christchurch, England',
+          attribution: ''
+        },
+      tvListings:
+        overrideTvListings ||
+        appState.tvListings ||
+        getCachedTvListings({ dateIso }) ||
+        unavailableTvListings(dateIso),
       filename: resolvePdfFilename(pdfModule, dateIso)
     };
     const result = await callPdfExporter(createPdf, payload, pdfExport.name);
@@ -360,7 +721,9 @@ async function callPdfExporter(createPdf, payload, exportName) {
     cells: payload.cells,
     displayDate: payload.displayDate,
     filename: payload.filename,
-    title: payload.title
+    title: payload.title,
+    weather: payload.weather,
+    tvListings: payload.tvListings
   };
   const name = `${exportName || ''} ${createPdf.name || ''}`.toLowerCase();
   const puzzleFirst = () => createPdf(payload.puzzle, payload.dateIso, options);
@@ -610,6 +973,19 @@ function addDays(dateIso, days) {
   const date = parseIsoDate(dateIso);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function weatherDayLabel(dateIso) {
+  if (!isValidIsoDate(dateIso)) {
+    return 'Next day';
+  }
+
+  return new Intl.DateTimeFormat('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC'
+  }).format(parseIsoDate(dateIso));
 }
 
 function errorMessage(error) {

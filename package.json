@@ -21,6 +21,16 @@
   "license": "MIT",
   "private": false,
   "type": "module",
+  "files": [
+    ".nvmrc",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "railway.json",
+    "scripts/",
+    "src/",
+    "tests/"
+  ],
   "engines": {
     "node": ">=20"
   },

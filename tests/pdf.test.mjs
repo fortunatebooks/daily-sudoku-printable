@@ -169,3 +169,23 @@ test('wraps hyphenated and slash-separated programme text without ellipsizing sh
   assert.match(lines.join(' '), /World-/);
   assert.match(lines.join(' '), /Cup\//);
 });
+
+test('keeps ordinary single-word TV titles beside the time', () => {
+  const layout = layoutTvListingsForPdf(
+    {
+      channels: [
+        {
+          name: 'Channel 4',
+          programs: [{ startTime: '21:00', title: 'Taskmaster' }]
+        }
+      ]
+    },
+    { x: 34, y: 28, width: 527.28, height: 260 }
+  );
+  const entry = layout.columns[0].entries[0];
+
+  assert.equal(entry.time, '9:00');
+  assert.equal(entry.stackedTitle, false);
+  assert.equal(entry.lines[0], 'Taskmaster');
+  assert.ok(entry.lineXOffsets[0] > 0);
+});

@@ -28,7 +28,7 @@ const PROGRAMME_FONT_STEP = 0.25;
 const MAX_CHANNEL_FONT = 11.8;
 const PROGRAMME_TRUNCATE_AFTER_CHARS = 45;
 const PROGRAMME_TIME_FONT_SCALE = 0.86;
-const PROGRAMME_TIME_TITLE_GAP = 4;
+const PROGRAMME_TIME_TITLE_GAP = 5;
 const PDF_MIME_TYPE = 'application/pdf';
 const DATE_KEY_PATTERN = /(\d{4})-(\d{2})-(\d{2})/;
 
@@ -409,11 +409,8 @@ function programmeTimeFontSize(programmeFontSize) {
   return roundFontSize(programmeFontSize * PROGRAMME_TIME_FONT_SCALE);
 }
 
-function programmeTitleXOffset(programmeFontSize) {
-  return (
-    estimateHelveticaWidth('11:00', programmeTimeFontSize(programmeFontSize)) +
-    PROGRAMME_TIME_TITLE_GAP
-  );
+function programmeTitleXOffset(time, programmeFontSize) {
+  return estimateHelveticaWidth(time, programmeTimeFontSize(programmeFontSize)) + PROGRAMME_TIME_TITLE_GAP;
 }
 
 function fitBestTvColumn(programs, metrics) {
@@ -439,7 +436,7 @@ function fitBestTvColumn(programs, metrics) {
       programmeLineHeight: programmeFontSize * 1.14
     });
 
-    if (fit.fits && fit.truncatedCount === 0) {
+    if (fit.fits && fit.truncatedCount === 0 && fit.stackedTitleCount === 0) {
       return fit;
     }
 
@@ -448,7 +445,9 @@ function fitBestTvColumn(programs, metrics) {
       (!bestTruncatedFit ||
         fit.truncatedCount < bestTruncatedFit.truncatedCount ||
         (fit.truncatedCount === bestTruncatedFit.truncatedCount &&
-          fit.programmeFontSize > bestTruncatedFit.programmeFontSize))
+          (fit.stackedTitleCount < bestTruncatedFit.stackedTitleCount ||
+            (fit.stackedTitleCount === bestTruncatedFit.stackedTitleCount &&
+              fit.programmeFontSize > bestTruncatedFit.programmeFontSize))))
     ) {
       bestTruncatedFit = fit;
     }
@@ -456,7 +455,10 @@ function fitBestTvColumn(programs, metrics) {
     if (
       !bestOverflowFit ||
       fit.truncatedCount < bestOverflowFit.truncatedCount ||
-      (fit.truncatedCount === bestOverflowFit.truncatedCount && fit.requiredHeight < bestOverflowFit.requiredHeight)
+      (fit.truncatedCount === bestOverflowFit.truncatedCount &&
+        (fit.stackedTitleCount < bestOverflowFit.stackedTitleCount ||
+          (fit.stackedTitleCount === bestOverflowFit.stackedTitleCount &&
+            fit.requiredHeight < bestOverflowFit.requiredHeight)))
     ) {
       bestOverflowFit = fit;
     }
@@ -474,7 +476,7 @@ function fitTvEntriesForColumn(programs, metrics) {
       const originalText = programmeText(program);
       const time = programmeTime(program);
       const timeFontSize = programmeTimeFontSize(metrics.programmeFontSize);
-      const titleXOffset = time ? programmeTitleXOffset(metrics.programmeFontSize) : 0;
+      const titleXOffset = time ? programmeTitleXOffset(time, metrics.programmeFontSize) : 0;
       const titleWidth = Math.max(20, metrics.columnWidth - titleXOffset);
       const wrapped = wrapProgrammeTitleForEntry(programmeTitle(program), {
         allowTruncate: cleanPdfText(originalText).length > PROGRAMME_TRUNCATE_AFTER_CHARS,
@@ -490,6 +492,7 @@ function fitTvEntriesForColumn(programs, metrics) {
         lines: wrapped.lines,
         lineXOffsets: wrapped.lineXOffsets,
         originalText,
+        stackedTitle: wrapped.stackedTitle,
         time,
         timeFontSize,
         titleXOffset,
@@ -505,6 +508,7 @@ function fitTvEntriesForColumn(programs, metrics) {
       entryGap: metrics.entryGap
     });
     const truncatedCount = countTruncatedEntries(entries);
+    const stackedTitleCount = countStackedTitleEntries(entries);
     const fit = {
       channelFontSize: metrics.channelFontSize,
       entries,
@@ -517,17 +521,20 @@ function fitTvEntriesForColumn(programs, metrics) {
       programmeFontSize: metrics.programmeFontSize,
       programmeLineHeight: metrics.programmeLineHeight,
       requiredHeight,
+      stackedTitleCount,
       truncatedCount
     };
 
-    if (fit.fits) {
+    if (fit.fits && fit.stackedTitleCount === 0) {
       return fit;
     }
 
     if (
       !best ||
       fit.truncatedCount < best.truncatedCount ||
-      (fit.truncatedCount === best.truncatedCount && fit.requiredHeight < best.requiredHeight)
+      (fit.truncatedCount === best.truncatedCount &&
+        (fit.stackedTitleCount < best.stackedTitleCount ||
+          (fit.stackedTitleCount === best.stackedTitleCount && fit.requiredHeight < best.requiredHeight)))
     ) {
       best = fit;
     }
@@ -554,6 +561,7 @@ function wrapProgrammeTitleForEntry(title, options) {
     return {
       lines: ['', ...wrapped.lines],
       lineXOffsets: [0, ...wrapped.lines.map(() => 0)],
+      stackedTitle: true,
       truncated: wrapped.truncated
     };
   }
@@ -565,12 +573,17 @@ function wrapProgrammeTitleForEntry(title, options) {
   return {
     lines: wrapped.lines,
     lineXOffsets: wrapped.lines.map(() => options.titleXOffset),
+    stackedTitle: false,
     truncated: wrapped.truncated
   };
 }
 
 function countTruncatedEntries(entries) {
   return entries.filter((entry) => entry.truncated).length;
+}
+
+function countStackedTitleEntries(entries) {
+  return entries.filter((entry) => entry.stackedTitle).length;
 }
 
 function buildDescendingFontOptions(max, min, step) {

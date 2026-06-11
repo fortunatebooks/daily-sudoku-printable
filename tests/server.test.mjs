@@ -112,8 +112,10 @@ test('server falls back to the SPA without serving files outside the app root', 
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     const routeResponse = await fetch(`${baseUrl}/puzzle/2026-06-11`);
     const traversalResponse = await fetch(`${baseUrl}/%2e%2e/package.json`);
+    const malformedEncodingResponse = await fetch(`${baseUrl}/%E0%A4%A`);
     const routeText = await routeResponse.text();
     const traversalText = await traversalResponse.text();
+    const malformedEncodingText = await malformedEncodingResponse.text();
 
     assert.equal(routeResponse.status, 200);
     assert.match(routeResponse.headers.get('content-type'), /text\/html/);
@@ -122,6 +124,9 @@ test('server falls back to the SPA without serving files outside the app root', 
     assert.match(traversalResponse.headers.get('content-type'), /text\/html/);
     assert.match(traversalText, /Jenny's Sudoku/);
     assert.doesNotMatch(traversalText, /"name": "daily-sudoku-printable"/);
+    assert.equal(malformedEncodingResponse.status, 200);
+    assert.match(malformedEncodingResponse.headers.get('content-type'), /text\/html/);
+    assert.match(malformedEncodingText, /Jenny's Sudoku/);
   } finally {
     await close(server);
   }

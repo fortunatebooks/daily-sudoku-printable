@@ -187,7 +187,7 @@ async function sendStaticApp(response, url, root, fallbackRoot) {
 }
 
 async function resolveStaticPath(urlPath, root, fallbackRoot) {
-  const decoded = decodeURIComponent(urlPath);
+  const decoded = safeDecodePath(urlPath);
   const clean = decoded === '/' ? '/index.html' : decoded;
   const candidate = safePath(root, clean);
   const candidateStat = await stat(candidate).catch(() => null);
@@ -204,6 +204,14 @@ async function resolveStaticPath(urlPath, root, fallbackRoot) {
   return (await stat(path.join(root, 'index.html')).catch(() => null))
     ? path.join(root, 'index.html')
     : path.join(fallbackRoot, 'index.html');
+}
+
+function safeDecodePath(urlPath) {
+  try {
+    return decodeURIComponent(urlPath);
+  } catch {
+    return '/';
+  }
 }
 
 function safePath(root, urlPath) {

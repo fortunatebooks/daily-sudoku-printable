@@ -69,7 +69,8 @@ const appState = {
   tvListings: null,
   tvRouteKey: '',
   tvPromise: null,
-  lastAutoPdfRoute: ''
+  lastAutoPdfRoute: '',
+  lastAutoPrintRoute: ''
 };
 
 const elements = {
@@ -129,7 +130,7 @@ function init() {
   });
 
   elements.print?.addEventListener('click', () => {
-    window.print();
+    printCurrentPdf();
   });
 
   elements.pdf?.addEventListener('click', () => {
@@ -181,6 +182,16 @@ async function renderRoute() {
       const weather = await waitForWeatherForPdf(routeKey, route.dateIso);
       const tvListings = await waitForTvListingsForPdf(routeKey, route.dateIso);
       await downloadCurrentPdf({ weather, tvListings });
+    }
+  }
+
+  if (route.mode === 'print' && appState.puzzle != null) {
+    const routeKey = `${route.mode}:${route.dateIso}:${window.location.pathname}`;
+    if (appState.lastAutoPrintRoute !== routeKey) {
+      appState.lastAutoPrintRoute = routeKey;
+      const weather = await waitForWeatherForPdf(routeKey, route.dateIso);
+      const tvListings = await waitForTvListingsForPdf(routeKey, route.dateIso);
+      await printCurrentPdf({ weather, tvListings });
     }
   }
 }
@@ -659,6 +670,26 @@ async function waitForTvListingsForPdf(routeKey, dateIso) {
 }
 
 async function downloadCurrentPdf(overrides = undefined) {
+  try {
+    const { blob, filename } = await createCurrentPdfBlob(overrides, 'Preparing PDF...');
+    downloadBlob(blob, filename);
+    setStatus('');
+  } catch (error) {
+    setStatus(errorMessage(error), true);
+  }
+}
+
+async function printCurrentPdf(overrides = undefined) {
+  try {
+    const { blob, filename } = await createCurrentPdfBlob(overrides, 'Preparing print...');
+    await printPdfBlob(blob, filename);
+    setStatus('');
+  } catch (error) {
+    setStatus(errorMessage(error), true);
+  }
+}
+
+async function createCurrentPdfBlob(overrides = undefined, statusMessage = 'Preparing PDF...') {
   const route = appState.route || resolveRoute(window.location.pathname);
   const dateIso = route.dateIso;
   const hasStructuredOverrides =
@@ -666,55 +697,50 @@ async function downloadCurrentPdf(overrides = undefined) {
   const overrideWeather = hasStructuredOverrides ? overrides.weather : overrides;
   const overrideTvListings = hasStructuredOverrides ? overrides.tvListings : undefined;
 
-  try {
-    if (appState.puzzle == null) {
-      throw new Error('The puzzle is not ready for PDF download yet.');
-    }
-
-    setStatus('Preparing PDF...');
-    const pdfModule = await import('./pdf.js');
-    const pdfExport = findExportEntry(pdfModule, PDF_EXPORTS);
-    const createPdf = pdfExport?.fn;
-
-    if (!createPdf) {
-      throw new Error('No compatible PDF export was found in pdf.js.');
-    }
-
-    const displayDate = formatDisplayDate.format(parseIsoDate(dateIso));
-    const payload = {
-      date: dateIso,
-      dateIso,
-      isoDate: dateIso,
-      displayDate,
-      formattedDate: displayDate,
-      title: "Jenny's Sudoku",
-      puzzle: appState.puzzle,
-      cells: appState.cells,
-      weather:
-        overrideWeather ||
-        appState.weather ||
-        getCachedWeather({ dateIso }) || {
-          unavailable: true,
-          locationLabel: 'Christchurch, England',
-          attribution: ''
-        },
-      tvListings:
-        overrideTvListings ||
-        appState.tvListings ||
-        getCachedTvListings({ dateIso }) ||
-        unavailableTvListings(dateIso),
-      filename: resolvePdfFilename(pdfModule, dateIso)
-    };
-    const result = await callPdfExporter(createPdf, payload, pdfExport.name);
-
-    if (result != null) {
-      savePdfResult(result, payload.filename);
-    }
-
-    setStatus('');
-  } catch (error) {
-    setStatus(errorMessage(error), true);
+  if (appState.puzzle == null) {
+    throw new Error('The puzzle is not ready for PDF output yet.');
   }
+
+  setStatus(statusMessage);
+  const pdfModule = await import('./pdf.js');
+  const pdfExport = findExportEntry(pdfModule, PDF_EXPORTS);
+  const createPdf = pdfExport?.fn;
+
+  if (!createPdf) {
+    throw new Error('No compatible PDF export was found in pdf.js.');
+  }
+
+  const displayDate = formatDisplayDate.format(parseIsoDate(dateIso));
+  const payload = {
+    date: dateIso,
+    dateIso,
+    isoDate: dateIso,
+    displayDate,
+    formattedDate: displayDate,
+    title: "Jenny's Sudoku",
+    puzzle: appState.puzzle,
+    cells: appState.cells,
+    weather:
+      overrideWeather ||
+      appState.weather ||
+      getCachedWeather({ dateIso }) || {
+        unavailable: true,
+        locationLabel: 'Christchurch, England',
+        attribution: ''
+      },
+    tvListings:
+      overrideTvListings ||
+      appState.tvListings ||
+      getCachedTvListings({ dateIso }) ||
+      unavailableTvListings(dateIso),
+    filename: resolvePdfFilename(pdfModule, dateIso)
+  };
+  const result = await callPdfExporter(createPdf, payload, pdfExport.name);
+
+  return {
+    blob: await pdfResultToBlob(result),
+    filename: payload.filename
+  };
 }
 
 async function callPdfExporter(createPdf, payload, exportName) {
@@ -900,6 +926,35 @@ function savePdfResult(result, filename) {
   }
 }
 
+async function pdfResultToBlob(result) {
+  if (result instanceof Blob) {
+    return result;
+  }
+
+  if (result instanceof ArrayBuffer || ArrayBuffer.isView(result)) {
+    return new Blob([result], { type: 'application/pdf' });
+  }
+
+  if (typeof result === 'string') {
+    const response = await fetch(result);
+
+    if (!response.ok) {
+      throw new Error('PDF output could not be loaded for printing.');
+    }
+
+    return response.blob();
+  }
+
+  if (result && typeof result === 'object') {
+    const value = result.blob ?? result.file ?? result.data ?? result.bytes ?? result.url ?? result.href;
+    if (value != null) {
+      return pdfResultToBlob(value);
+    }
+  }
+
+  throw new Error('PDF output was not generated.');
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -909,6 +964,72 @@ function downloadBlob(blob, filename) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function printPdfBlob(blob, filename) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const frame = document.createElement('iframe');
+    let settled = false;
+
+    const cleanup = () => {
+      frame.remove();
+      URL.revokeObjectURL(url);
+    };
+    const finish = () => {
+      if (!settled) {
+        settled = true;
+        window.setTimeout(cleanup, 60000);
+        resolve();
+      }
+    };
+    const fallbackToPdfTab = () => {
+      const tab = window.open(url, '_blank', 'noopener');
+
+      if (!tab) {
+        cleanup();
+        reject(new Error('The browser blocked the print PDF. Use Download PDF instead.'));
+        return;
+      }
+
+      setStatus(`Opened ${filename} for printing.`);
+      finish();
+    };
+
+    frame.title = `${filename} print preview`;
+    frame.style.position = 'fixed';
+    frame.style.right = '0';
+    frame.style.bottom = '0';
+    frame.style.width = '1px';
+    frame.style.height = '1px';
+    frame.style.border = '0';
+    frame.style.opacity = '0';
+    frame.onload = () => {
+      window.setTimeout(() => {
+        try {
+          const printWindow = frame.contentWindow;
+
+          if (!printWindow || typeof printWindow.print !== 'function') {
+            fallbackToPdfTab();
+            return;
+          }
+
+          printWindow.focus();
+          printWindow.print();
+          finish();
+        } catch {
+          fallbackToPdfTab();
+        }
+      }, 250);
+    };
+    frame.onerror = () => {
+      cleanup();
+      reject(new Error('The print PDF could not be loaded.'));
+    };
+
+    document.body.append(frame);
+    frame.src = url;
+  });
 }
 
 function navigate(path) {

@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildFreelyProxyUrl,
   buildFreelyTvGuideUrl,
   getCachedTvListings,
   loadFreelyTvListings,
+  loadTvListings,
   normalizeFreelyTvGuide,
   TV_CHANNELS,
   TV_LISTINGS_CACHE_KEY,
@@ -36,6 +38,36 @@ test('builds the Freely URL with fixed personal-use nid and UTC day start', () =
   const url = buildFreelyTvGuideUrl('2026-06-11');
 
   assert.equal(url, 'https://www.freely.co.uk/api/tv-guide?nid=64865&start=1781136000');
+  assert.equal(buildFreelyProxyUrl('2026-06-11'), '/api/freely-tv-guide?nid=64865&start=1781136000');
+});
+
+test('browser loader falls back to here.now Freely proxy when server API returns SPA HTML', async () => {
+  const storage = createMemoryStorage();
+  const requestedUrls = [];
+  const listings = await loadTvListings({
+    dateIso: '2026-06-11',
+    storage,
+    fetchImpl: async (url) => {
+      requestedUrls.push(url);
+      if (String(url).startsWith('/api/tv-listings/')) {
+        return responseStub({
+          body: '<!doctype html><title>Jenny</title>',
+          contentType: 'text/html; charset=utf-8'
+        });
+      }
+
+      return responseStub({
+        body: sampleFreelyGuide(),
+        contentType: 'application/json'
+      });
+    }
+  });
+
+  assert.deepEqual(requestedUrls, [
+    '/api/tv-listings/2026-06-11',
+    '/api/freely-tv-guide?nid=64865&start=1781136000'
+  ]);
+  assert.equal(listings.channels[0].programs[0].title, 'EastEnders');
 });
 
 test('falls back to stale cached TV listings when Freely fetch fails', async () => {
@@ -154,6 +186,21 @@ function createMemoryStorage() {
     },
     setItem(key, value) {
       values.set(key, String(value));
+    }
+  };
+}
+
+function responseStub({ body, contentType, status = 200 }) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: {
+      get(name) {
+        return name.toLowerCase() === 'content-type' ? contentType : '';
+      }
+    },
+    async json() {
+      return body;
     }
   };
 }

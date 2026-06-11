@@ -50,6 +50,19 @@ export async function loadTvListings(options = {}) {
     }
     return listings;
   } catch {
+    // Static here.now previews do not run scripts/server.mjs. In that mode,
+    // /api/tv-listings returns the SPA HTML, so use the here.now proxy route.
+  }
+
+  try {
+    const rawListings = await fetchFreelyTvGuide({
+      ...options,
+      url: options.proxyUrl ?? buildFreelyProxyUrl(options.dateIso)
+    });
+    const listings = normalizeFreelyTvGuide(rawListings, { dateIso: options.dateIso });
+    writeTvListingsCache(listings, { now, storage });
+    return listings;
+  } catch {
     return getCachedTvListings({
       dateIso: options.dateIso,
       now,
@@ -129,6 +142,15 @@ export function buildFreelyTvGuideUrl(dateIso = todayIsoInTimeZone()) {
   });
 
   return `${FREELY_TV_GUIDE_URL}?${params.toString()}`;
+}
+
+export function buildFreelyProxyUrl(dateIso = todayIsoInTimeZone()) {
+  const params = new URLSearchParams({
+    nid: FREELY_NID,
+    start: String(startOfUtcDayUnix(dateIso))
+  });
+
+  return `/api/freely-tv-guide?${params.toString()}`;
 }
 
 export function normalizeFreelyTvGuide(source, options = {}) {

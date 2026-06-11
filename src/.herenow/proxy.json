@@ -1,0 +1,9 @@
+{
+  "proxies": {
+    "/api/freely-tv-guide": {
+      "upstream": "https://www.freely.co.uk/api/tv-guide",
+      "method": "GET",
+      "rateLimit": "60/hour/ip"
+    }
+  }
+}

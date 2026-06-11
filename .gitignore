@@ -2,6 +2,8 @@
 node_modules/
 dist/
 .herenow/
+!src/.herenow/
+!src/.herenow/proxy.json
 *.log
 .env
 .env.*
@@ -9,4 +11,3 @@ dist/
 coverage/
 playwright-report/
 test-results/
-

@@ -1,6 +1,11 @@
 export const LONDON_TIME_ZONE = 'Europe/London';
-export const DIFFICULTY = 'medium';
-export const TARGET_CLUES = 34;
+export const HARD_PUZZLE_START_DATE = '2026-06-18';
+export const MEDIUM_DIFFICULTY = 'medium';
+export const HARD_DIFFICULTY = 'hard';
+export const MEDIUM_TARGET_CLUES = 34;
+export const HARD_TARGET_CLUES = 30;
+export const DIFFICULTY = MEDIUM_DIFFICULTY;
+export const TARGET_CLUES = MEDIUM_TARGET_CLUES;
 
 const GRID_SIZE = 9;
 const CELL_COUNT = GRID_SIZE * GRID_SIZE;
@@ -310,16 +315,32 @@ function makePuzzle(solution, seedInput, targetClues) {
   return cells.join('');
 }
 
-function buildPuzzleForDate(dateString) {
+export function puzzleSettingsForDate(dateString) {
+  assertValidDateString(dateString);
+
+  if (dateString >= HARD_PUZZLE_START_DATE) {
+    return {
+      difficulty: HARD_DIFFICULTY,
+      targetClues: HARD_TARGET_CLUES
+    };
+  }
+
+  return {
+    difficulty: MEDIUM_DIFFICULTY,
+    targetClues: MEDIUM_TARGET_CLUES
+  };
+}
+
+function buildPuzzleForDate(dateString, targetClues) {
   let best = null;
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     const seedInput = `daily-sudoku:${dateString}:${attempt}`;
     const solution = createSolvedGrid(`${seedInput}:solution`);
-    const puzzle = makePuzzle(solution, `${seedInput}:puzzle`, TARGET_CLUES);
+    const puzzle = makePuzzle(solution, `${seedInput}:puzzle`, targetClues);
     const clues = clueCount(puzzle);
 
-    if (clues === TARGET_CLUES) {
+    if (clues === targetClues) {
       return { puzzle, solution };
     }
 
@@ -333,11 +354,12 @@ function buildPuzzleForDate(dateString) {
 
 export function generateSudokuForDate(dateString = todayInLondon()) {
   assertValidDateString(dateString);
-  const { puzzle, solution } = buildPuzzleForDate(dateString);
+  const settings = puzzleSettingsForDate(dateString);
+  const { puzzle, solution } = buildPuzzleForDate(dateString, settings.targetClues);
 
   return {
     date: dateString,
-    difficulty: DIFFICULTY,
+    difficulty: settings.difficulty,
     puzzle,
     solution,
     created_at: `${dateString}T00:00:00.000Z`

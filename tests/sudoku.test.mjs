@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  HARD_TARGET_CLUES,
+  MEDIUM_TARGET_CLUES,
   TARGET_CLUES,
   clueCount,
   countSolutions,
@@ -11,6 +13,7 @@ import {
   isSupportedRoute,
   isValidSolution,
   previousDate,
+  puzzleSettingsForDate,
   puzzleMatchesSolution,
   todayInLondon
 } from '../src/sudoku.js';
@@ -39,8 +42,30 @@ test('generates a valid medium-ish puzzle with a valid solution', () => {
   assert.equal(daily.puzzle.length, 81);
   assert.equal(daily.solution.length, 81);
   assert.equal(clueCount(daily.puzzle), TARGET_CLUES);
+  assert.equal(clueCount(daily.puzzle), MEDIUM_TARGET_CLUES);
   assert.equal(isValidSolution(daily.solution), true);
   assert.equal(puzzleMatchesSolution(daily.puzzle, daily.solution), true);
+});
+
+test('generates hard puzzles from 18 June 2026', () => {
+  const beforeChange = generateDailySudoku('2026-06-17');
+  const firstHard = generateDailySudoku('2026-06-18');
+
+  assert.deepEqual(puzzleSettingsForDate('2026-06-17'), {
+    difficulty: 'medium',
+    targetClues: MEDIUM_TARGET_CLUES
+  });
+  assert.deepEqual(puzzleSettingsForDate('2026-06-18'), {
+    difficulty: 'hard',
+    targetClues: HARD_TARGET_CLUES
+  });
+  assert.equal(beforeChange.difficulty, 'medium');
+  assert.equal(clueCount(beforeChange.puzzle), MEDIUM_TARGET_CLUES);
+  assert.equal(firstHard.difficulty, 'hard');
+  assert.equal(clueCount(firstHard.puzzle), HARD_TARGET_CLUES);
+  assert.equal(isValidSolution(firstHard.solution), true);
+  assert.equal(puzzleMatchesSolution(firstHard.puzzle, firstHard.solution), true);
+  assert.equal(countSolutions(firstHard.puzzle, 2), 1);
 });
 
 test('generated puzzle has a unique solution', () => {

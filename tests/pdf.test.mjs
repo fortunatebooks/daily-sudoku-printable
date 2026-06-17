@@ -67,6 +67,10 @@ test('builds an A4 Sudoku PDF with predictable filename', () => {
   assert.equal(sudokuPdfFilename(puzzle.date), 'sudoku-2026-06-11.pdf');
   assert.match(text, /^%PDF-1\.4/);
   assert.match(text, /\/MediaBox \[0 0 595\.28 841\.89\]/);
+  assert.match(text, / 795\.89 Tm \(Jenny's Sudoku\) Tj ET/);
+  assert.match(text, / 772\.89 Tm \(Thursday, 11 June 2026\) Tj ET/);
+  assert.match(text, /2\.4 w 97\.64 350 m 97\.64 750 l S/);
+  assert.match(text, /0\.6 w 34 34 m 561\.28 34 l S/);
   assert.match(text, /Jenny's Sudoku/);
   assert.match(text, /Thursday, 11 June 2026/);
   assert.doesNotMatch(text, /Christchurch Weather/);

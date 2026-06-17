@@ -1,5 +1,7 @@
 # Jenny's Sudoku
 
+Live site: <https://jennysudoku.com/>
+
 A small personal project that makes one printable Sudoku for each day.
 
 It was built as a gift for my mum, who likes Sudoku and wanted something she
@@ -7,8 +9,6 @@ could print every morning: a fresh puzzle, a little local weather, and the
 evening TV listings on one A4 page. The intended use is deliberately simple:
 run the app on a small web host, then have `cron`, `launchd`, or another
 scheduler download `/pdf/today` and send it to the printer.
-
-You can see the deployed version at <https://jennysudoku.com/>.
 
 This repo is public because the idea is easy to adapt. If you use it for your
 own family or household, you will almost certainly want to change the title,

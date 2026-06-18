@@ -119,12 +119,47 @@ button {
 }
 
 .puzzle-section {
-  width: min(100%, 700px);
+  width: min(100%, 1080px);
   margin: 0 auto;
 }
 
+.sudoku-puzzles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 390px), 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.puzzle-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.puzzle-card-heading {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: clamp(1rem, 2vw, 1.18rem);
+  line-height: 1.2;
+}
+
+.puzzle-card-number {
+  font-weight: 800;
+}
+
+.puzzle-card-difficulty {
+  color: var(--muted);
+  font-size: 0.92em;
+  font-weight: 720;
+  text-align: right;
+}
+
 .sudoku-grid {
-  width: min(100%, 70vh, 700px);
+  width: min(100%, 62vh, 520px);
   aspect-ratio: 1;
   margin: 0 auto;
   display: grid;
@@ -133,6 +168,10 @@ button {
   border: 3px solid var(--strong-line);
   background: var(--strong-line);
   box-shadow: 0 18px 44px rgba(37, 31, 22, 0.14);
+}
+
+.puzzle-card:only-child .sudoku-grid {
+  width: min(100%, 70vh, 700px);
 }
 
 .sudoku-cell {
@@ -571,6 +610,15 @@ button {
     width: min(100%, 88vh);
   }
 
+  .sudoku-puzzles {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .puzzle-card-heading {
+    font-size: 1rem;
+  }
+
   .primary-actions {
     grid-template-columns: 1fr;
   }
@@ -694,8 +742,29 @@ button {
     margin: 0;
   }
 
+  .sudoku-puzzles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4mm;
+  }
+
+  .puzzle-card {
+    gap: 1.5mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .puzzle-card-heading {
+    font-size: 8pt;
+    line-height: 1.1;
+  }
+
+  .puzzle-card-difficulty {
+    color: #000000;
+  }
+
   .sudoku-grid {
-    width: 145mm;
+    width: 100%;
     max-width: 100%;
     margin: 0 auto;
     border: 2pt solid #000000;

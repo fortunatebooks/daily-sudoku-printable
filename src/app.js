@@ -12,6 +12,7 @@ const appState = {
   route: null,
   puzzle: null,
   cells: Array(81).fill(null),
+  puzzleEntries: [],
   weather: null,
   weatherRouteKey: '',
   weatherPromise: null,
@@ -24,7 +25,7 @@ const appState = {
 
 const elements = {
   dateText: document.querySelector('#dateText'),
-  grid: document.querySelector('#sudokuGrid'),
+  puzzles: document.querySelector('#sudokuPuzzles'),
   status: document.querySelector('#statusText'),
   previous: document.querySelector('[data-action="previous"]'),
   today: document.querySelector('[data-action="today"]'),
@@ -114,13 +115,15 @@ async function renderRoute() {
 
   try {
     appState.puzzle = await loadPuzzle(route.dateIso);
-    appState.cells = normalisePuzzle(appState.puzzle);
-    renderGrid(appState.cells);
+    appState.puzzleEntries = normalisePuzzleEntries(appState.puzzle);
+    appState.cells = appState.puzzleEntries[0]?.cells || Array(81).fill(null);
+    renderPuzzleEntries(appState.puzzleEntries);
     setStatus('');
   } catch (error) {
     appState.puzzle = null;
     appState.cells = Array(81).fill(null);
-    renderGrid(appState.cells);
+    appState.puzzleEntries = [];
+    renderPuzzleEntries(emptyPuzzleEntries());
     setStatus(errorMessage(error), true);
   }
 
@@ -199,11 +202,45 @@ function renderDate(dateIso) {
 }
 
 function renderEmptyGrid() {
-  renderGrid(Array(81).fill(null));
+  appState.puzzleEntries = [];
+  appState.cells = Array(81).fill(null);
+  renderPuzzleEntries(emptyPuzzleEntries());
 }
 
-function renderGrid(cells) {
+function renderPuzzleEntries(entries) {
   const fragment = document.createDocumentFragment();
+
+  entries.forEach((entry) => {
+    const card = document.createElement('article');
+    card.className = 'puzzle-card';
+    card.setAttribute('aria-labelledby', `puzzle-${entry.number}-label`);
+
+    const heading = document.createElement('h3');
+    heading.id = `puzzle-${entry.number}-label`;
+    heading.className = 'puzzle-card-heading';
+    heading.setAttribute('aria-label', `Puzzle ${entry.number} - ${entry.label || 'Sudoku'}`);
+    heading.append(
+      textSpan(`Puzzle ${entry.number}`, 'puzzle-card-number'),
+      textSpan(entry.label || 'Sudoku', 'puzzle-card-difficulty')
+    );
+
+    const grid = renderGrid(entry.cells, {
+      label: `Puzzle ${entry.number} - ${entry.label || 'Sudoku'}`
+    });
+
+    card.append(heading, grid);
+    fragment.append(card);
+  });
+
+  elements.puzzles.replaceChildren(fragment);
+}
+
+function renderGrid(cells, options = {}) {
+  const fragment = document.createDocumentFragment();
+  const grid = document.createElement('div');
+  grid.className = 'sudoku-grid';
+  grid.setAttribute('role', 'grid');
+  grid.setAttribute('aria-label', options.label || 'Sudoku puzzle');
 
   cells.forEach((value, index) => {
     const cell = document.createElement('div');
@@ -219,7 +256,15 @@ function renderGrid(cells) {
     fragment.append(cell);
   });
 
-  elements.grid.replaceChildren(fragment);
+  grid.replaceChildren(fragment);
+  return grid;
+}
+
+function textSpan(text, className) {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
 }
 
 function renderHistory() {
@@ -706,6 +751,54 @@ function normalisePuzzle(source) {
   }
 
   return cells;
+}
+
+function normalisePuzzleEntries(source) {
+  const sourceEntries = Array.isArray(source?.puzzles) && source.puzzles.length > 0
+    ? source.puzzles
+    : [source];
+
+  return sourceEntries.map((entry, index) => ({
+    number: Number.isInteger(entry?.number) ? entry.number : index + 1,
+    label: puzzleDisplayLabel(entry, index),
+    cells: normalisePuzzle(entry)
+  }));
+}
+
+function emptyPuzzleEntries() {
+  return [
+    {
+      number: 1,
+      label: 'Loading',
+      cells: Array(81).fill(null)
+    },
+    {
+      number: 2,
+      label: 'Loading',
+      cells: Array(81).fill(null)
+    }
+  ];
+}
+
+function puzzleDisplayLabel(entry, index) {
+  const label =
+    entry?.label ||
+    entry?.measuredLabel ||
+    entry?.difficultyLabel ||
+    entry?.difficulty ||
+    (index === 0 ? appState.puzzle?.difficulty : '');
+
+  return cleanDifficultyLabel(label);
+}
+
+function cleanDifficultyLabel(label) {
+  const clean = String(label || '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  if (!clean) {
+    return 'Sudoku';
+  }
+
+  return clean.replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function flattenGrid(grid) {

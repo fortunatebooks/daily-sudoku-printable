@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { createRequestHandler } from '../scripts/server.mjs';
 
-test('server returns raw PDFs for automation-friendly routes', async () => {
+test('server returns PDFs for automation-friendly routes', async () => {
   const server = createServer(createRequestHandler({
     root: 'src',
     fallbackRoot: 'src',
@@ -24,7 +24,7 @@ test('server returns raw PDFs for automation-friendly routes', async () => {
     assert.match(response.headers.get('content-disposition'), /filename="sudoku-2026-06-11\.pdf"/);
     assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
     assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
-    assert.equal(text, '%PDF-1.4');
+    assert.equal(text, '%PDF-1.3');
   } finally {
     await close(server);
   }

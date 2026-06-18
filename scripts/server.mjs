@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
-import { buildSudokuPdfBytes, sudokuPdfFilename } from '../src/pdf.js';
+import { buildSudokuPdfBytes, sudokuPdfFilename } from '../src/pdf-node.js';
 import {
   dateForRoute,
   generateDailySudoku,
@@ -156,7 +156,7 @@ async function sendPdf(response, url, loaders) {
     }).catch(() => null)
   ]);
   const resolvedWeather = weather || unavailableWeather(date);
-  const bytes = buildSudokuPdfBytes(puzzle, date, {
+  const bytes = await buildSudokuPdfBytes(puzzle, date, {
     title: "Jenny's Sudoku",
     weather: resolvedWeather,
     tvListings: tvListings || unavailableTvListings(date)

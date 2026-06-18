@@ -662,7 +662,7 @@ function tvProgrammeTimeLabel(programme) {
     return '';
   }
 
-  return formatTvDisplayTime(programme.startTime).replace(':', '.');
+  return formatTvDisplayTime(programme.startTime) || programme.startTime;
 }
 
 export function layoutTvListingsForPdf(tvListings, box) {

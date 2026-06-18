@@ -620,6 +620,12 @@ async function createCurrentPdfBlob(overrides = undefined, statusMessage = 'Prep
 
   setStatus(statusMessage);
   const displayDate = formatDisplayDate.format(parseIsoDate(dateIso));
+  const serverPdf = await fetchServerPdfBlob(dateIso).catch(() => null);
+
+  if (serverPdf) {
+    return serverPdf;
+  }
+
   const payload = {
     date: dateIso,
     dateIso,
@@ -666,6 +672,27 @@ async function createCurrentPdfBlob(overrides = undefined, statusMessage = 'Prep
   return {
     blob: await pdfResultToBlob(result),
     filename: payload.filename
+  };
+}
+
+async function fetchServerPdfBlob(dateIso) {
+  if (window.location.protocol === 'file:') {
+    return null;
+  }
+
+  const response = await fetch(`/pdf/${dateIso}?download=1`, {
+    headers: {
+      accept: 'application/pdf'
+    }
+  });
+
+  if (!response.ok || !response.headers.get('content-type')?.includes('application/pdf')) {
+    return null;
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: sudokuPdfFilename(dateIso)
   };
 }
 

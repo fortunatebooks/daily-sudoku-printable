@@ -7,6 +7,7 @@ import {
   layoutTvListingsForPdf,
   sudokuPdfFilename
 } from '../src/pdf.js';
+import { buildSudokuPdfBytes as buildNodeSudokuPdfBytes } from '../src/pdf-node.js';
 import { generateDailySudoku } from '../src/sudoku.js';
 
 test('builds an A4 Sudoku PDF with predictable filename', () => {
@@ -98,7 +99,7 @@ test('builds an A4 Sudoku PDF with predictable filename', () => {
   assert.match(text, /Tonight on TV - 7-11pm/);
   assert.match(text, /BBC One/);
   assert.match(text, /EastEnders/);
-  assert.match(text, /\(8\.00\) Tj/);
+  assert.match(text, /\(8:00\) Tj/);
   assert.match(text, /Sort Your Life Out/);
   assert.match(text, /BBC Two/);
   assert.match(text, /Springwatch/);
@@ -206,9 +207,68 @@ test('lays out TV listings as readable channel bands', () => {
     ['BBC One', 'BBC Two', 'ITV1', 'Channel 4', 'Channel 5']
   );
   const rowText = layout.rows[0].lines.flatMap((line) => line.segments.map((segment) => segment.text)).join(' ');
-  assert.match(rowText, /6\.30/);
+  assert.match(rowText, /6:30/);
   assert.doesNotMatch(rowText, /On now/);
   assert.ok(layout.rows[0].programmeWidth > 430);
+});
+
+test('builds the embedded-font server PDF without omitting TV listings', async () => {
+  const puzzle = generateDailySudoku('2026-06-19');
+  const layoutDebug = { tvRows: [] };
+  const tvPrograms = [
+    { startTime: '18:30', startedBeforeWindow: true, title: 'Antiques Road Trip' },
+    { startTime: '19:30', title: 'EastEnders' },
+    { startTime: '20:00', title: 'The Repair Shop' },
+    { startTime: '20:30', title: 'A Very Long Programme Title That Needs Ellipsizing' },
+    { startTime: '21:00', title: 'Silent Witness' },
+    { startTime: '22:00', title: 'BBC News at Ten' }
+  ];
+  const bytes = await buildNodeSudokuPdfBytes(puzzle, puzzle.date, {
+    layoutDebug,
+    weather: {
+      days: [
+        {
+          dateIso: '2026-06-19',
+          icon: 'sun',
+          label: 'Sunny',
+          highC: 20,
+          lowC: 12,
+          sunrise: '04:49',
+          sunset: '21:19',
+          gardenSummary: {
+            rainSummary: 'Mostly dry',
+            windSummary: 'Light wind',
+            wateringSummary: 'Water pots if soil is dry',
+            bestGardenTime: 'Best garden time: morning'
+          }
+        }
+      ]
+    },
+    tvListings: {
+      channels: [
+        { name: 'BBC One South', programs: tvPrograms },
+        { name: 'BBC Two', programs: [] },
+        { name: 'ITV1', programs: [] },
+        { name: 'Channel 4', programs: [] },
+        { name: '5', programs: [] }
+      ]
+    }
+  });
+  const firstRow = layoutDebug.tvRows[0];
+  const fifthRow = layoutDebug.tvRows[4];
+
+  assert.equal(new TextDecoder('ascii').decode(bytes.slice(0, 8)), '%PDF-1.3');
+  assert.equal(firstRow.heading, 'BBC One');
+  assert.equal(fifthRow.heading, 'Channel 5');
+  assert.equal(firstRow.programmes.length, tvPrograms.length);
+  assert.deepEqual(
+    firstRow.programmes.map((programme) => programme.time),
+    ['6:30', '7:30', '8:00', '8:30', '9:00', '10:00']
+  );
+  assert.equal(firstRow.programmes.some((programme) => programme.time === 'On now'), false);
+  assert.equal(firstRow.programmes.some((programme) => /\+\d+ later/.test(programme.renderedTitle)), false);
+  assert.equal(firstRow.programmes.some((programme) => programme.truncated), true);
+  assert.ok(firstRow.minFontSize >= 8.5);
 });
 
 test('collapses dense TV channel bands to a later-count marker', () => {

@@ -45,10 +45,11 @@ server, and a hand-built PDF writer.
   validation helpers, uniqueness checks, and the custom human-style grader.
 - `src/sudoku-config.js` controls the daily difficulty schedule, clue targets,
   scoring thresholds, fallback policy, and seed version.
-- `src/pdf.js` builds the ink-saving black-and-white A4 PDF. It draws the
-  puzzle grids, givens, title, date, right-side weather, TV listings box, and
-  includes text fitting/truncation so long programme titles do not spill out of
-  the printable area.
+- `src/pdf-node.js` builds the Railway/server A4 PDF with embedded Lora and
+  Source Sans 3 fonts. It draws the print-optimized daily sheet used by the
+  scheduled download/print job.
+- `src/pdf.js` is the browser/static fallback PDF writer. It keeps PDF
+  downloads working when the Node PDF endpoint is not available.
 - `src/weather.js` pulls weather from Open-Meteo, falls back to wttr.in, keeps
   fresh/stale cache windows, formats forecast lines, and calculates moon phase
   text for the printout.

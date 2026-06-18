@@ -43,6 +43,9 @@
     "sudoku:audit:ci": "node scripts/audit-sudoku.mjs --from 2026-06-18 --days 30 --ci",
     "test": "node --test tests/*.mjs"
   },
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "@fontsource/lora": "^5.2.8",
+    "@fontsource/source-sans-3": "^5.2.9",
+    "pdfkit": "^0.19.1"
+  }
 }

@@ -254,13 +254,12 @@ function drawGivens(doc, givens, gridX, gridY, cellSize) {
 
 function drawWeatherPanel(doc, weather, box) {
   const titleY = box.y;
-  drawWeatherIcon(doc, 'partly-cloudy', box.x + 5, titleY + 2, 13);
   doc
     .font(FONTS.serifBold)
     .fontSize(13.4)
     .fillColor('black')
-    .text('WEATHER FOR THE GARDEN', box.x + 34, titleY - 1, {
-      width: box.width - 34,
+    .text('WEATHER FOR THE GARDEN', box.x, titleY - 1, {
+      width: box.width,
       height: 20
     });
   drawLine(doc, box.x, box.y + 24, box.x + box.width, box.y + 24, 0.75);
@@ -507,6 +506,7 @@ function drawTvPanel(doc, tvListings, box, options = {}) {
     });
     rowDebug.push({
       heading,
+      lines: layout.lines.map((line) => line.map((chunk) => chunk.time).filter(Boolean)),
       programmes: layout.programmes,
       lineCount: layout.lines.length,
       minFontSize: Math.min(layout.titleSize, layout.timeSize),
@@ -577,15 +577,37 @@ function tryLayoutTvProgramLines(doc, programmes, metrics, style, options = {}) 
       truncated: chunk.truncated
     });
   }
+  const balancedLines = balanceTvLines(lines, metrics.width);
 
   return {
-    fits: options.force || lines.length <= maxLines,
-    lines,
+    fits: options.force || balancedLines.length <= maxLines,
+    lines: balancedLines,
     lineHeight: style.lineHeight,
     programmes: placedProgrammes,
     timeSize: style.timeSize,
     titleSize: style.titleSize
   };
+}
+
+function balanceTvLines(lines, width) {
+  const balanced = lines.map((line) => line.slice());
+
+  for (let index = 1; index < balanced.length; index += 1) {
+    const previous = balanced[index - 1];
+    const current = balanced[index];
+
+    if (current.length !== 1 || previous.length <= 1) {
+      continue;
+    }
+
+    const candidate = previous[previous.length - 1];
+
+    if (tvLineWidth([candidate, ...current]) <= width) {
+      current.unshift(previous.pop());
+    }
+  }
+
+  return balanced.filter((line) => line.length > 0);
 }
 
 function buildTvChunk(doc, programme, rowWidth, style) {

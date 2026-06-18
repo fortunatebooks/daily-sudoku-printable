@@ -329,6 +329,10 @@ test('server TV layout uses spare line width before truncating programme titles'
   assert.equal(channel4Ten.truncated, false);
   assert.equal(channel5Ten.renderedTitle, 'Soham: The Murder of Holly & Jessica');
   assert.equal(channel5Ten.truncated, false);
+  assert.deepEqual(channel5.lines, [
+    ['7:00', '8:00'],
+    ['9:00', '10:00']
+  ]);
 });
 
 test('collapses dense TV channel bands to a later-count marker', () => {

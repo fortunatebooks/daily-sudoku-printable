@@ -149,6 +149,56 @@ test('preserves feed-provided ellipsis in shortened programme titles', () => {
   assert.equal(title, 'New: Build Your Dream Home in...');
 });
 
+test('expands shortened Freely titles from programme detail synopsis', async () => {
+  const guide = sampleFreelyGuide();
+  guide.data.programs.find((channel) => channel.service_id === '38145').events.push({
+    program_id: 'crid://example.test/soham',
+    main_title: 'Soham: The Murder of Holly &...',
+    start_time: '2026-06-11T18:00:00+0000',
+    duration: 'PT1H'
+  });
+  const requestedUrls = [];
+  const fetchImpl = async (url) => {
+    requestedUrls.push(String(url));
+
+    if (String(url).includes('/program?')) {
+      return {
+        ok: true,
+        json: async () => ({
+          status: 'success',
+          data: {
+            programs: [
+              {
+                main_title: 'Soham: The Murder of Holly &...',
+                synopsis: {
+                  medium: '...Jessica. The brutal murders shocked the country.'
+                }
+              }
+            ]
+          }
+        })
+      };
+    }
+
+    return {
+      ok: true,
+      json: async () => guide
+    };
+  };
+
+  const listings = await loadFreelyTvListings({
+    dateIso: '2026-06-11',
+    fetchImpl,
+    storage: null
+  });
+  const title = listings.channels
+    .find((channel) => channel.serviceId === '38145')
+    .programs.find((program) => program.startTime === '19:00')?.title;
+
+  assert.equal(title, 'Soham: The Murder of Holly & Jessica');
+  assert.equal(requestedUrls.some((url) => url.includes('/program?')), true);
+});
+
 function sampleFreelyGuide() {
   return {
     status: 'success',

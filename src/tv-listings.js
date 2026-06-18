@@ -1,4 +1,5 @@
 const FREELY_TV_GUIDE_URL = 'https://www.freely.co.uk/api/tv-guide';
+const FREELY_PROGRAM_URL = 'https://www.freely.co.uk/api/program';
 const FREELY_NID = '64865';
 const TV_LISTINGS_CACHE_KEY = 'daily-sudoku-tv-listings-v2';
 const TV_FRESH_CACHE_MS = 4 * 60 * 60 * 1000;
@@ -19,6 +20,7 @@ const TV_CHANNELS = [
 export {
   DEFAULT_TIMEOUT_MS as TV_DEFAULT_TIMEOUT_MS,
   FREELY_NID,
+  FREELY_PROGRAM_URL,
   FREELY_TV_GUIDE_URL,
   TV_CHANNELS,
   TV_FRESH_CACHE_MS,
@@ -93,7 +95,8 @@ export async function loadFreelyTvListings(options = {}) {
 
   try {
     const rawListings = await fetchFreelyTvGuide(options);
-    const listings = normalizeFreelyTvGuide(rawListings, { dateIso: options.dateIso });
+    const normalizedListings = normalizeFreelyTvGuide(rawListings, { dateIso: options.dateIso });
+    const listings = await enrichEllipsizedFreelyTitles(normalizedListings, options);
     writeTvListingsCache(listings, { now, storage });
     return listings;
   } catch {
@@ -190,14 +193,17 @@ export function normalizeFreelyTvGuide(source, options = {}) {
         });
       const programs = normalizedEvents
         .filter((program) => program.startMs < windowEndMs && program.endMs > windowStartMs)
-        .map(({ startMs, endMs, durationMs, ...program }) =>
-          startMs < windowStartMs
-            ? {
-                ...program,
-                startedBeforeWindow: true
-              }
-            : program
-        );
+        .map(({ startMs, endMs, durationMs, programId, rawStartTime, duration, ...program }) => {
+          const displayProgram =
+            startMs < windowStartMs
+              ? {
+                  ...program,
+                  startedBeforeWindow: true
+                }
+              : program;
+
+          return attachFreelyDetail(displayProgram, { programId, rawStartTime, duration });
+        });
 
       return {
         serviceId: fixedChannel.serviceId,
@@ -290,19 +296,169 @@ async function fetchServerTvListings(options = {}) {
 
 function normalizeFreelyEvent(event) {
   const title = cleanTitle(event?.main_title ?? event?.title ?? event?.name);
-  const startMs = parseGuideTime(event?.start_time ?? event?.startTime ?? event?.start);
-  const durationMs = parseDurationMs(event?.duration ?? event?.durationMs);
+  const rawStartTime = event?.start_time ?? event?.startTime ?? event?.start;
+  const rawDuration = event?.duration ?? event?.durationMs;
+  const startMs = parseGuideTime(rawStartTime);
+  const durationMs = parseDurationMs(rawDuration);
 
   if (!title || startMs == null) {
     return null;
   }
 
   return {
+    duration: rawDuration,
+    programId: event?.program_id ?? event?.programId,
+    rawStartTime,
     startMs,
     startTime: formatZonedTime(startMs),
     title,
     ...(durationMs ? { durationMs } : {})
   };
+}
+
+function attachFreelyDetail(program, detail) {
+  if (!detail.programId || !detail.rawStartTime || !detail.duration) {
+    return program;
+  }
+
+  Object.defineProperty(program, 'freelyDetail', {
+    configurable: false,
+    enumerable: false,
+    value: detail,
+    writable: false
+  });
+
+  return program;
+}
+
+async function enrichEllipsizedFreelyTitles(listings, options = {}) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+
+  if (typeof fetchImpl !== 'function') {
+    return listings;
+  }
+
+  const tasks = [];
+
+  for (const channel of listings.channels || []) {
+    for (const program of channel.programs || []) {
+      if (!canFetchFreelyProgramDetails(channel, program)) {
+        continue;
+      }
+
+      tasks.push({ channel, program });
+    }
+  }
+
+  if (tasks.length === 0) {
+    return listings;
+  }
+
+  await Promise.all(
+    tasks.map(async ({ channel, program }) => {
+      try {
+        const detail = await fetchFreelyProgramDetails(channel, program, options);
+        const expanded = expandEllipsizedTitleFromProgramDetail(program.title, detail);
+
+        if (expanded) {
+          program.title = expanded;
+        }
+      } catch {
+        // TV detail enrichment is best-effort; keep the compact guide title on failure.
+      }
+    })
+  );
+
+  return listings;
+}
+
+function canFetchFreelyProgramDetails(channel, program) {
+  const detail = program?.freelyDetail;
+
+  return Boolean(
+    channel?.serviceId &&
+      detail?.programId &&
+      detail?.rawStartTime &&
+      detail?.duration &&
+      isEllipsizedTitle(program.title)
+  );
+}
+
+async function fetchFreelyProgramDetails(channel, program, options = {}) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  const timeoutMs = Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
+  const timeoutId =
+    controller && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+  const url = new URL(options.programUrl ?? FREELY_PROGRAM_URL);
+  const detail = program.freelyDetail;
+
+  url.searchParams.set('sid', channel.serviceId);
+  url.searchParams.set('nid', options.nid ?? FREELY_NID);
+  url.searchParams.set('pid', detail.programId);
+  url.searchParams.set('start_time', detail.rawStartTime);
+  url.searchParams.set('duration', detail.duration);
+
+  try {
+    const response = await fetchImpl(url.toString(), {
+      headers: {
+        accept: 'application/json'
+      },
+      signal: controller?.signal
+    });
+
+    if (!response || !response.ok) {
+      throw new Error(`TV programme detail request failed with status ${response?.status ?? 'unknown'}.`);
+    }
+
+    const body = await response.json();
+    return body?.data?.programs?.[0] ?? null;
+  } finally {
+    if (timeoutId != null) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+function expandEllipsizedTitleFromProgramDetail(title, detail) {
+  const cleanTitleValue = cleanTitle(title);
+
+  if (!isEllipsizedTitle(cleanTitleValue)) {
+    return null;
+  }
+
+  const detailTitle = cleanTitle(detail?.main_title ?? detail?.title ?? '');
+  if (detailTitle && !isEllipsizedTitle(detailTitle) && detailTitle.length > cleanTitleValue.length) {
+    return detailTitle;
+  }
+
+  const synopsis = synopsisText(detail?.synopsis);
+  const prefix = cleanTitleValue.replace(/\s*\.{3}\s*$/, '').trim();
+  const continuationMatch = synopsis.match(/^\s*\.{3}\s*([^.!?]+)[.!?]/);
+  const continuation = cleanTitle(continuationMatch?.[1] || '');
+  const continuationWordCount = continuation ? continuation.split(/\s+/).length : 0;
+
+  if (!prefix || !continuation || continuation.length > 45 || continuationWordCount > 7) {
+    return null;
+  }
+
+  const expanded = cleanTitle(`${prefix} ${continuation}`);
+
+  return expanded.length > prefix.length + 2 && !isEllipsizedTitle(expanded) ? expanded : null;
+}
+
+function synopsisText(synopsis) {
+  if (typeof synopsis === 'string') {
+    return cleanTitle(synopsis);
+  }
+
+  return cleanTitle(synopsis?.medium ?? synopsis?.short ?? synopsis?.long ?? '');
+}
+
+function isEllipsizedTitle(title) {
+  return /\.{3}\s*$/.test(String(title || '').trim());
 }
 
 function extractFreelyChannels(source) {

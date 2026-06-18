@@ -182,10 +182,10 @@ button {
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--ink);
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(1.45rem, 6.2vw, 3.15rem);
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-size: clamp(1.35rem, 4.1vw, 2.5rem);
   font-weight: 700;
-  line-height: 1;
+  line-height: 0.9;
 }
 
 .sudoku-cell:nth-child(3n) {
@@ -608,6 +608,10 @@ button {
 
   .sudoku-grid {
     width: min(100%, 88vh);
+  }
+
+  .sudoku-cell {
+    font-size: clamp(1.45rem, 8vw, 2.15rem);
   }
 
   .sudoku-puzzles {

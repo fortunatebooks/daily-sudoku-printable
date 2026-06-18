@@ -33,23 +33,23 @@ const PAGE = {
   bottom: 28
 };
 const LAYOUT = {
-  titleY: 24,
-  dateY: 70,
-  mastheadRuleY: 98,
-  puzzleX: 36,
-  puzzleOneGridY: 126,
-  puzzleTwoGridY: 354,
-  puzzleLabelOffset: 20,
-  puzzleGridSize: 204,
-  weatherX: 276,
-  weatherY: 112,
-  weatherWidth: 287,
+  titleY: 16,
+  dateY: 36,
+  mastheadRuleY: 64,
+  puzzleX: 32,
+  puzzleOneGridY: 95,
+  puzzleTwoGridY: 343,
+  puzzleLabelOffset: 17,
+  puzzleGridSize: 228,
+  weatherX: 280,
+  weatherY: 78,
+  weatherWidth: 283,
   tvX: 32,
-  tvY: 566,
+  tvY: 596,
   tvWidth: 531,
-  tvHeight: 248
+  tvHeight: 218
 };
-LAYOUT.weatherHeight = LAYOUT.tvY - LAYOUT.weatherY - 14;
+LAYOUT.weatherHeight = LAYOUT.tvY - LAYOUT.weatherY - 18;
 const GREY = {
   rail: '#f5f5f5',
   rule: '#555555'
@@ -117,6 +117,19 @@ function resolvePdfInputs(puzzleData, displayDate, options) {
 }
 
 function drawPage(doc, puzzles, displayDate, options = {}) {
+  if (options.layoutDebug && typeof options.layoutDebug === 'object') {
+    options.layoutDebug.page = {
+      mastheadRuleY: LAYOUT.mastheadRuleY,
+      puzzleGridSize: LAYOUT.puzzleGridSize,
+      puzzleOneGridY: LAYOUT.puzzleOneGridY,
+      puzzleTwoGridY: LAYOUT.puzzleTwoGridY,
+      tvY: LAYOUT.tvY,
+      tvHeight: LAYOUT.tvHeight,
+      weatherY: LAYOUT.weatherY,
+      weatherHeight: LAYOUT.weatherHeight
+    };
+  }
+
   drawMasthead(doc, options.title || "Jenny's Sudoku", displayDate);
   drawPuzzlePanel(doc, puzzles[0], {
     gridX: LAYOUT.puzzleX,
@@ -147,18 +160,18 @@ function drawPage(doc, puzzles, displayDate, options = {}) {
 function drawMasthead(doc, title, displayDate) {
   doc
     .font(FONTS.serifBold)
-    .fontSize(32)
+    .fontSize(31)
     .fillColor('black')
-    .text(cleanPdfText(title), 0, LAYOUT.titleY, {
+    .text(cleanPdfText(title), PAGE.marginX, LAYOUT.titleY, {
       align: 'center',
-      width: PAGE.width
+      width: PAGE.width - PAGE.marginX * 2
     });
   doc
-    .font(FONTS.sans)
-    .fontSize(12.8)
-    .text(displayDateLabel(displayDate), 0, LAYOUT.dateY, {
-      align: 'center',
-      width: PAGE.width
+    .font(FONTS.sansSemi)
+    .fontSize(10.8)
+    .text(displayDateLabel(displayDate), PAGE.width - PAGE.marginX - 145, LAYOUT.dateY, {
+      align: 'right',
+      width: 145
     });
   drawLine(doc, PAGE.marginX, LAYOUT.mastheadRuleY, PAGE.width - PAGE.marginX, LAYOUT.mastheadRuleY, 1.05);
   drawLine(doc, PAGE.marginX, LAYOUT.mastheadRuleY + 4, PAGE.width - PAGE.marginX, LAYOUT.mastheadRuleY + 4, 0.35);
@@ -193,7 +206,7 @@ function drawGrid(doc, x, y, size) {
 }
 
 function drawGivens(doc, givens, gridX, gridY, cellSize) {
-  doc.font(FONTS.sansSemi).fontSize(15).fillColor('black');
+  doc.font(FONTS.sansSemi).fontSize(Math.min(17, cellSize * 0.65)).fillColor('black');
 
   givens.forEach((value, index) => {
     if (!value) {
@@ -203,7 +216,7 @@ function drawGivens(doc, givens, gridX, gridY, cellSize) {
     const row = Math.floor(index / 9);
     const column = index % 9;
     const x = gridX + column * cellSize;
-    const y = gridY + row * cellSize + 3.9;
+    const y = gridY + row * cellSize + cellSize * 0.17;
 
     doc.text(value, x, y, {
       width: cellSize,
@@ -215,22 +228,22 @@ function drawGivens(doc, givens, gridX, gridY, cellSize) {
 
 function drawWeatherPanel(doc, weather, box) {
   const titleY = box.y;
-  drawWeatherIcon(doc, 'partly-cloudy', box.x + 5, titleY + 2, 14);
+  drawWeatherIcon(doc, 'partly-cloudy', box.x + 5, titleY + 2, 13);
   doc
     .font(FONTS.serifBold)
-    .fontSize(14)
+    .fontSize(13.4)
     .fillColor('black')
     .text('WEATHER FOR THE GARDEN', box.x + 34, titleY - 1, {
       width: box.width - 34,
       height: 20
     });
-  drawLine(doc, box.x, box.y + 27, box.x + box.width, box.y + 27, 0.75);
+  drawLine(doc, box.x, box.y + 24, box.x + box.width, box.y + 24, 0.75);
 
   if (!weather || weather.unavailable || !Array.isArray(weather.days) || weather.days.length === 0) {
     doc
       .font(FONTS.sans)
       .fontSize(10)
-      .text('Weather forecast unavailable', box.x + 8, box.y + 44, {
+      .text('Weather forecast unavailable', box.x + 8, box.y + 38, {
         width: box.width - 16
       });
     return;
@@ -238,8 +251,8 @@ function drawWeatherPanel(doc, weather, box) {
 
   const days = weather.days.slice(0, 4);
   const today = days[0];
-  const todayY = box.y + 46;
-  const todayH = 142;
+  const todayY = box.y + 36;
+  const todayH = 126;
   drawTodayWeather(doc, today, {
     x: box.x,
     y: todayY,
@@ -247,8 +260,8 @@ function drawWeatherPanel(doc, weather, box) {
     height: todayH
   });
 
-  const rowH = 52;
-  const rowStartY = todayY + todayH + 18;
+  const rowH = 40;
+  const rowStartY = todayY + todayH + 8;
   days.slice(1, 4).forEach((day, index) => {
     drawWeatherDayRow(doc, day, {
       x: box.x,
@@ -260,14 +273,19 @@ function drawWeatherPanel(doc, weather, box) {
 
   const note = weatherBottomGardenNote(today);
   if (note) {
-    const noteY = box.y + box.height - 36;
-    drawLine(doc, box.x, noteY - 8, box.x + box.width, noteY - 8, 0.35);
+    const noteY = rowStartY + Math.max(1, days.slice(1, 4).length) * rowH + 16;
+
+    if (noteY + 18 > box.y + box.height) {
+      return;
+    }
+
+    drawLine(doc, box.x, noteY - 7, box.x + box.width, noteY - 7, 0.35);
     doc
       .font(FONTS.sansBold)
-      .fontSize(9.8)
+      .fontSize(9.5)
       .text(cleanPdfText(note), box.x + 8, noteY, {
         width: box.width - 16,
-        height: 24
+        height: 18
       });
   }
 }
@@ -278,35 +296,35 @@ function drawTodayWeather(doc, day, box) {
 
   drawLine(doc, box.x, box.y, box.x + box.width, box.y, 0.45);
   drawLine(doc, box.x, box.y + box.height, box.x + box.width, box.y + box.height, 0.45);
-  doc.font(FONTS.sansBold).fontSize(12.8).text('TODAY', box.x + 8, box.y + 10, {
+  doc.font(FONTS.sansBold).fontSize(12.2).text('TODAY', box.x + 8, box.y + 8, {
     width: 80
   });
-  doc.font(FONTS.sansBold).fontSize(10).text(`High ${temperatureNumber(day.highC)} / Low ${temperatureNumber(day.lowC)}`, box.x, box.y + 12, {
+  doc.font(FONTS.sansBold).fontSize(9.7).text(`High ${temperatureNumber(day.highC)} / Low ${temperatureNumber(day.lowC)}`, box.x, box.y + 10, {
     align: 'right',
     width: box.width - 8
   });
-  drawWeatherIcon(doc, day.icon, box.x + 24, box.y + 42, 20);
+  drawWeatherIcon(doc, day.icon, box.x + 24, box.y + 38, 18);
   drawFitText(doc, day.label || 'Forecast', {
-    x: box.x + 72,
-    y: box.y + 45,
+    x: box.x + 70,
+    y: box.y + 39,
     width: box.width - 84,
     font: FONTS.sans,
-    size: 10.2,
+    size: 9.8,
     maxLines: 2,
-    lineHeight: 12
+    lineHeight: 11.2
   });
-  drawLine(doc, box.x + 8, box.y + 78, box.x + box.width - 8, box.y + 78, 0.35);
-  drawWeatherMetric(doc, 'Rain', summary.rainSummary, box.x + 8, box.y + 89, box.width - 16);
-  drawWeatherMetric(doc, 'Wind', summary.windSummary, box.x + 8, box.y + 101, box.width - 16);
-  drawWeatherMetric(doc, 'Garden', summary.wateringSummary, box.x + 8, box.y + 113, box.width - 16);
+  drawLine(doc, box.x + 8, box.y + 68, box.x + box.width - 8, box.y + 68, 0.35);
+  drawWeatherMetric(doc, 'Rain', summary.rainSummary, box.x + 8, box.y + 77, box.width - 16);
+  drawWeatherMetric(doc, 'Wind', summary.windSummary, box.x + 8, box.y + 88, box.width - 16);
+  drawWeatherMetric(doc, 'Garden', summary.wateringSummary, box.x + 8, box.y + 99, box.width - 16);
 
   if (daylight) {
-    drawWeatherMetric(doc, 'Daylight', daylight, box.x + 8, box.y + 125, box.width - 16);
+    drawWeatherMetric(doc, 'Daylight', daylight, box.x + 8, box.y + 110, box.width - 16);
   }
 }
 
 function drawWeatherMetric(doc, label, value, x, y, width) {
-  doc.font(FONTS.sansBold).fontSize(9.3).text(`${label}:`, x, y, {
+  doc.font(FONTS.sansBold).fontSize(9).text(`${label}:`, x, y, {
     width: 58
   });
   drawFitText(doc, value || 'No detail', {
@@ -314,9 +332,9 @@ function drawWeatherMetric(doc, label, value, x, y, width) {
     y,
     width: width - 68,
     font: FONTS.sans,
-    size: 9.3,
+    size: 9,
     maxLines: 1,
-    lineHeight: 10.8
+    lineHeight: 10.3
   });
 }
 
@@ -324,54 +342,45 @@ function drawWeatherDayRow(doc, day, box) {
   const summary = weatherGardenSummary(day);
 
   drawLine(doc, box.x, box.y, box.x + box.width, box.y, 0.25, GREY.rule);
-  doc.font(FONTS.sansBold).fontSize(10).text(shortWeatherRowDayLabel(day.dateIso), box.x + 8, box.y + 14, {
+  doc.font(FONTS.sansBold).fontSize(9.6).text(shortWeatherRowDayLabel(day.dateIso), box.x + 8, box.y + 10, {
     width: 34
   });
-  drawWeatherIcon(doc, day.icon, box.x + 58, box.y + 15, 13);
-  doc.font(FONTS.sansBold).fontSize(9.5).text(shortTemperature(day), box.x + 86, box.y + 13, {
+  drawWeatherIcon(doc, day.icon, box.x + 56, box.y + 12, 12);
+  doc.font(FONTS.sansBold).fontSize(9.1).text(shortTemperature(day), box.x + 82, box.y + 10, {
     width: 48
   });
   drawFitText(doc, summary.rainSummary, {
-    x: box.x + 142,
-    y: box.y + 11,
-    width: box.width - 150,
+    x: box.x + 136,
+    y: box.y + 8,
+    width: box.width - 144,
     font: FONTS.sans,
-    size: 9.5,
+    size: 9.1,
     maxLines: 1,
-    lineHeight: 11
+    lineHeight: 10.5
   });
   drawFitText(doc, summary.windSummary, {
-    x: box.x + 142,
-    y: box.y + 26,
-    width: box.width - 150,
+    x: box.x + 136,
+    y: box.y + 22,
+    width: box.width - 144,
     font: FONTS.sans,
-    size: 9.5,
+    size: 9.1,
     maxLines: 1,
-    lineHeight: 11
+    lineHeight: 10.5
   });
 }
 
 function drawTvPanel(doc, tvListings, box, options = {}) {
   doc.rect(box.x, box.y, box.width, box.height).lineWidth(0.55).strokeColor('black').stroke();
-  doc
-    .font(FONTS.serifBold)
-    .fontSize(14)
-    .fillColor('black')
-    .text('TONIGHT ON TV - 7-11PM', box.x + 9, box.y + 10, {
-      width: box.width - 18,
-      height: 18
-    });
-  drawLine(doc, box.x + 8, box.y + 35, box.x + box.width - 8, box.y + 35, 0.75);
 
   const rows = normalizeTvChannels(tvListings);
-  const titleHeight = 38;
-  const bottomPadding = 7;
-  const rowH = (box.height - titleHeight - bottomPadding) / TV_CHANNEL_COUNT;
+  const topPadding = 4;
+  const bottomPadding = 4;
+  const rowH = (box.height - topPadding - bottomPadding) / TV_CHANNEL_COUNT;
   const labelW = 68;
   const rowDebug = [];
 
   rows.forEach((channel, index) => {
-    const rowY = box.y + titleHeight + index * rowH;
+    const rowY = box.y + topPadding + index * rowH;
     const heading = pdfChannelHeading(channel.name || `Channel ${index + 1}`);
     const programmes = Array.isArray(channel.programs) && channel.programs.length > 0
       ? channel.programs
@@ -392,7 +401,7 @@ function drawTvPanel(doc, tvListings, box, options = {}) {
       .font(FONTS.sansBold)
       .fontSize(10.2)
       .fillColor('black')
-      .text(heading.toUpperCase(), box.x + 8, rowY + 13, {
+      .text(heading.toUpperCase(), box.x + 8, rowY + Math.max(9, (rowH - 12) / 2), {
         width: labelW - 13,
         height: rowH - 4
       });
@@ -423,7 +432,8 @@ function drawTvPanel(doc, tvListings, box, options = {}) {
       heading,
       programmes: layout.programmes,
       lineCount: layout.lines.length,
-      minFontSize: Math.min(layout.titleSize, layout.timeSize)
+      minFontSize: Math.min(layout.titleSize, layout.timeSize),
+      rowHeight: rowH
     });
   });
 

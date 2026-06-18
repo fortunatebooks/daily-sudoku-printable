@@ -206,7 +206,12 @@ function drawGrid(doc, x, y, size) {
 }
 
 function drawGivens(doc, givens, gridX, gridY, cellSize) {
-  doc.font(FONTS.sansSemi).fontSize(Math.min(17, cellSize * 0.65)).fillColor('black');
+  const numberSize = Math.min(17, cellSize * 0.65);
+
+  doc.font(FONTS.sansSemi).fontSize(numberSize).fillColor('black');
+  const lineHeight = doc.currentLineHeight();
+  const opticalLift = numberSize * 0.12;
+  const topOffset = (cellSize - lineHeight) / 2 - opticalLift;
 
   givens.forEach((value, index) => {
     if (!value) {
@@ -216,12 +221,13 @@ function drawGivens(doc, givens, gridX, gridY, cellSize) {
     const row = Math.floor(index / 9);
     const column = index % 9;
     const x = gridX + column * cellSize;
-    const y = gridY + row * cellSize + cellSize * 0.17;
+    const y = gridY + row * cellSize + topOffset;
 
     doc.text(value, x, y, {
       width: cellSize,
-      height: cellSize,
-      align: 'center'
+      height: lineHeight,
+      align: 'center',
+      lineBreak: false
     });
   });
 }

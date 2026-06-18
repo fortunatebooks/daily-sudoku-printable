@@ -3,7 +3,7 @@ export const HARD_PUZZLE_START_DATE = '2026-06-18';
 export const MEDIUM_DIFFICULTY = 'medium';
 export const HARD_DIFFICULTY = 'hard';
 export const MEDIUM_TARGET_CLUES = 34;
-export const HARD_TARGET_CLUES = 30;
+export const HARD_TARGET_CLUES = 28;
 export const DIFFICULTY = MEDIUM_DIFFICULTY;
 export const TARGET_CLUES = MEDIUM_TARGET_CLUES;
 

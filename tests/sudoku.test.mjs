@@ -51,6 +51,7 @@ test('generates hard puzzles from 18 June 2026', () => {
   const beforeChange = generateDailySudoku('2026-06-17');
   const firstHard = generateDailySudoku('2026-06-18');
 
+  assert.equal(HARD_TARGET_CLUES, 28);
   assert.deepEqual(puzzleSettingsForDate('2026-06-17'), {
     difficulty: 'medium',
     targetClues: MEDIUM_TARGET_CLUES

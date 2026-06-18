@@ -42,8 +42,9 @@ server, and a hand-built PDF writer.
 ## Useful Files
 
 - `src/sudoku.js` handles date routing, deterministic puzzle generation,
-  validation helpers, uniqueness checks, daily difficulty scheduling, and the
-  custom human-style grader.
+  validation helpers, uniqueness checks, and the custom human-style grader.
+- `src/sudoku-config.js` controls the daily difficulty schedule, clue targets,
+  scoring thresholds, fallback policy, and seed version.
 - `src/pdf.js` builds the ink-saving black-and-white A4 PDF. It draws the
   puzzle grids, givens, title, date, right-side weather, TV listings box, and
   includes text fitting/truncation so long programme titles do not spill out of
@@ -58,6 +59,8 @@ server, and a hand-built PDF writer.
 - `scripts/server.mjs` serves the app and the automation-friendly JSON/PDF
   endpoints.
 - `scripts/build.mjs` copies `src/` to `dist/` and adds static-hosting files.
+- `scripts/audit-sudoku.mjs` audits future generated puzzles and can output a
+  table, CSV, or JSON.
 - `tests/*.mjs` cover Sudoku generation, PDF output, server routes, weather,
   and TV listings.
 
@@ -160,7 +163,8 @@ Good places to start changing things:
 
 - Change the title in `src/index.html`, `src/app.js`, and `scripts/server.mjs`.
 - Change weather coordinates and fallback URL in `src/weather.js`.
-- Change the daily difficulty schedule or grading rules in `src/sudoku.js`.
+- Change the daily difficulty schedule or thresholds in `src/sudoku-config.js`.
+- Change solver techniques or generator internals in `src/sudoku.js`.
 - Change TV channels, Freely region id, listing window, or data source in
   `src/tv-listings.js`.
 - Change PDF sizing, spacing, or title treatment in `src/pdf.js`.
@@ -175,11 +179,18 @@ was made for personal, small-scale use.
 
 ```bash
 npm test
+npm run sudoku:audit -- --from 2026-06-18 --days 30
+npm run sudoku:audit -- --from 2026-06-18 --days 365 --format csv
 ```
 
 The tests use Node's built-in test runner and cover the parts most likely to
 break during personalization: puzzle determinism and validity, PDF layout,
 server behavior, weather fallbacks, and TV listing normalization.
+
+`npm run sudoku:audit:ci` checks the next configured 30-day window for
+uniqueness, valid solutions, solution matching, invalid grades, and singles-only
+hard puzzles. Missed `Super Fiendish` targets are warnings by default and print
+with a downgraded display label rather than overstating the puzzle.
 
 ## Build
 

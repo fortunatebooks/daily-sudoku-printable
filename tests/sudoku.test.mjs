@@ -22,6 +22,7 @@ import {
   puzzleMatchesSolution,
   todayInLondon
 } from '../src/sudoku.js';
+import { getSudokuConfig, validateSudokuConfig } from '../src/sudoku-config.js';
 
 const TOO_EASY_BASELINE_PUZZLE =
   '579000800000008000801005036000009020003006180004870000302600000000020008008007390';
@@ -75,11 +76,16 @@ test('generates hard puzzles from 18 June 2026', () => {
   assert.equal(isValidSolution(firstHard.solution), true);
   assert.equal(puzzleMatchesSolution(firstHard.puzzle, firstHard.solution), true);
   assert.equal(countSolutions(firstHard.puzzle, 2), 1);
+  assert.equal(firstHard.puzzles[0].requestedLabel, VERY_DIFFICULT_DIFFICULTY);
+  assert.equal(firstHard.puzzles[0].targetMet, true);
+  assert.equal(firstHard.puzzles[0].fallback, false);
+  assert.equal(typeof firstHard.puzzles[0].measuredLabel, 'string');
+  assert.equal(firstHard.puzzles[0].fallbackReason, null);
 });
 
 test('generates two graded puzzles on weekdays and harder pairs on weekends', () => {
   const weekday = generateDailySudoku('2026-06-19');
-  const weekend = generateDailySudoku('2026-06-20');
+  const weekend = generateDailySudoku('2026-06-21');
 
   assert.deepEqual(
     puzzleTargetsForDate('2026-06-19').map((target) => target.label),
@@ -104,7 +110,61 @@ test('generates two graded puzzles on weekdays and harder pairs on weekends', ()
     assert.equal(countSolutions(puzzle.puzzle, 2), 1);
     assert.equal(puzzle.grade.singlesOnly, false);
     assert.equal(puzzle.grade.score > 0, true);
+    assert.equal(puzzle.targetMet, true);
+    assert.equal(puzzle.fallback, false);
+    assert.equal(puzzle.fallbackReason, null);
+    assert.equal(typeof puzzle.measuredLabel, 'string');
+    assert.equal(Number.isInteger(puzzle.generationAttempts), true);
   }
+});
+
+test('downgrades missed targets instead of overstating the printed label', () => {
+  const weekend = generateDailySudoku('2026-06-20');
+  const missedSuperFiendish = weekend.puzzles[1];
+
+  assert.equal(missedSuperFiendish.requestedLabel, SUPER_FIENDISH_DIFFICULTY);
+  assert.equal(missedSuperFiendish.measuredLabel, FIENDISH_DIFFICULTY);
+  assert.equal(missedSuperFiendish.label, FIENDISH_DIFFICULTY);
+  assert.equal(missedSuperFiendish.targetMet, false);
+  assert.equal(missedSuperFiendish.fallback, true);
+  assert.match(missedSuperFiendish.fallbackReason, /hardest weight/);
+  assert.equal(missedSuperFiendish.grade.solvedWithoutGuessing, true);
+});
+
+test('validates editable Sudoku difficulty config', () => {
+  const config = getSudokuConfig();
+
+  assert.equal(config.startDate, '2026-06-18');
+  assert.deepEqual(config.schedule.weekdays, ['very-difficult', 'fiendish']);
+  assert.equal(Object.isFrozen(config), true);
+  assert.doesNotThrow(() => validateSudokuConfig(config));
+
+  assert.throws(
+    () =>
+      validateSudokuConfig({
+        ...config,
+        schedule: {
+          ...config.schedule,
+          weekdays: ['unknown']
+        }
+      }),
+    /known difficulty id/
+  );
+
+  assert.throws(
+    () =>
+      validateSudokuConfig({
+        ...config,
+        difficultyLevels: {
+          ...config.difficultyLevels,
+          fiendish: {
+            ...config.difficultyLevels.fiendish,
+            clueTargets: [12]
+          }
+        }
+      }),
+    /clueTargets/
+  );
 });
 
 test('grades the old 28-clue baseline as too easy', () => {

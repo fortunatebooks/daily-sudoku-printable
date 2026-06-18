@@ -1,12 +1,16 @@
+import { getSudokuConfig } from './sudoku-config.js';
+
+const SUDOKU_CONFIG = getSudokuConfig();
+
 export const LONDON_TIME_ZONE = 'Europe/London';
-export const HARD_PUZZLE_START_DATE = '2026-06-18';
-export const MEDIUM_DIFFICULTY = 'medium';
-export const VERY_DIFFICULT_DIFFICULTY = 'Very Difficult';
-export const FIENDISH_DIFFICULTY = 'Fiendish';
-export const SUPER_FIENDISH_DIFFICULTY = 'Super Fiendish';
+export const HARD_PUZZLE_START_DATE = SUDOKU_CONFIG.startDate;
+export const MEDIUM_DIFFICULTY = SUDOKU_CONFIG.difficultyLevels.medium.label;
+export const VERY_DIFFICULT_DIFFICULTY = SUDOKU_CONFIG.difficultyLevels['very-difficult'].label;
+export const FIENDISH_DIFFICULTY = SUDOKU_CONFIG.difficultyLevels.fiendish.label;
+export const SUPER_FIENDISH_DIFFICULTY = SUDOKU_CONFIG.difficultyLevels['super-fiendish'].label;
 export const HARD_DIFFICULTY = FIENDISH_DIFFICULTY;
-export const MEDIUM_TARGET_CLUES = 34;
-export const HARD_TARGET_CLUES = 28;
+export const MEDIUM_TARGET_CLUES = SUDOKU_CONFIG.difficultyLevels.medium.targetClues;
+export const HARD_TARGET_CLUES = SUDOKU_CONFIG.difficultyLevels['very-difficult'].targetClues;
 export const DIFFICULTY = MEDIUM_DIFFICULTY;
 export const TARGET_CLUES = MEDIUM_TARGET_CLUES;
 
@@ -16,18 +20,9 @@ const BOX_SIZE = 3;
 const FULL_MASK = 0x1ff;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ROUTE_PATTERN = /^\/(?:puzzle|print|pdf)\/([^/]+)$/;
-const MAX_GRADED_ATTEMPTS = 260;
-const TECHNIQUE_WEIGHTS = new Map([
-  ['naked-single', 1],
-  ['hidden-single', 2],
-  ['locked-candidate', 10],
-  ['naked-pair', 14],
-  ['hidden-pair', 16],
-  ['naked-triple', 24],
-  ['hidden-triple', 28],
-  ['x-wing', 38],
-  ['unsolved-without-guessing', 52]
-]);
+const MAX_GRADED_ATTEMPTS = SUDOKU_CONFIG.grader.maxGradedAttempts;
+const SINGLE_SCORE_CAP = SUDOKU_CONFIG.grader.singleScoreCap;
+const TECHNIQUE_WEIGHTS = new Map(Object.entries(SUDOKU_CONFIG.grader.techniqueWeights));
 const TECHNIQUE_LABELS = new Map([
   ['naked-single', 'Naked single'],
   ['hidden-single', 'Hidden single'],
@@ -760,39 +755,65 @@ function applyXWing(state) {
 function buildGrade(result) {
   const steps = result.steps || [];
   const techniqueCounts = {};
-  let score = 0;
+  let placementScore = 0;
+  let singleScore = 0;
+  let hardTechniqueScore = 0;
   let hardestTechnique = '';
   let hardestWeight = 0;
+  let singleStepCount = 0;
   let nonSingleSteps = 0;
 
   for (const step of steps) {
     const weight = TECHNIQUE_WEIGHTS.get(step.technique) || 0;
+    const isSingle = step.technique === 'naked-single' || step.technique === 'hidden-single';
     techniqueCounts[step.technique] = (techniqueCounts[step.technique] || 0) + 1;
-    score += weight;
+    placementScore += weight;
+
+    if (isSingle) {
+      singleScore += weight;
+      singleStepCount += 1;
+    } else {
+      hardTechniqueScore += weight;
+    }
 
     if (weight > hardestWeight) {
       hardestWeight = weight;
       hardestTechnique = step.technique;
     }
 
-    if (step.technique !== 'naked-single' && step.technique !== 'hidden-single') {
+    if (!isSingle) {
       nonSingleSteps += 1;
     }
   }
 
+  const score = hardTechniqueScore + Math.min(singleScore, SINGLE_SCORE_CAP);
   const solvedWithoutGuessing = result.solved && hardestTechnique !== 'unsolved-without-guessing';
   const singlesOnly = solvedWithoutGuessing && nonSingleSteps === 0;
-  const label = gradeLabelFor({ hardestTechnique, hardestWeight, nonSingleSteps, score, singlesOnly, solvedWithoutGuessing });
+  const label = result.invalid
+    ? 'Invalid'
+    : gradeLabelFor({
+        hardestTechnique,
+        hardestWeight,
+        hardTechniqueScore,
+        nonSingleSteps,
+        score,
+        singlesOnly,
+        solvedWithoutGuessing
+      });
 
   return {
     invalid: Boolean(result.invalid),
     label,
     score,
+    placementScore,
+    singleScore,
+    hardTechniqueScore,
     solvedWithoutGuessing,
     singlesOnly,
     hardestTechnique,
     hardestTechniqueLabel: TECHNIQUE_LABELS.get(hardestTechnique) || '',
     hardestWeight,
+    singleStepCount,
     nonSingleSteps,
     stepCount: steps.length,
     techniqueCounts,
@@ -801,19 +822,34 @@ function buildGrade(result) {
 }
 
 function gradeLabelFor(metrics) {
+  if (!metrics.solvedWithoutGuessing) {
+    return 'Solver Stuck';
+  }
+
   if (metrics.singlesOnly) {
     return 'Too Easy';
   }
 
-  if (!metrics.solvedWithoutGuessing || metrics.hardestTechnique === 'x-wing' || metrics.hardestWeight >= 24 || metrics.score >= 170) {
+  if (
+    metrics.hardestTechnique === 'x-wing' ||
+    metrics.hardestWeight >= 24
+  ) {
     return SUPER_FIENDISH_DIFFICULTY;
   }
 
-  if (metrics.hardestWeight >= 14 || metrics.nonSingleSteps >= 3 || metrics.score >= 95) {
+  if (
+    metrics.hardestWeight >= 14 ||
+    metrics.nonSingleSteps >= 3 ||
+    metrics.hardTechniqueScore >= 42
+  ) {
     return FIENDISH_DIFFICULTY;
   }
 
-  if (metrics.hardestWeight >= 10 || metrics.nonSingleSteps >= 1 || metrics.score >= 65) {
+  if (
+    metrics.hardestWeight >= 10 ||
+    metrics.nonSingleSteps >= 1 ||
+    metrics.hardTechniqueScore >= 10
+  ) {
     return VERY_DIFFICULT_DIFFICULTY;
   }
 
@@ -887,27 +923,24 @@ function makePuzzle(solution, seedInput, targetClues) {
   return cells.join('');
 }
 
-export function puzzleTargetsForDate(dateString) {
+export function puzzleTargetsForDate(dateString, config = SUDOKU_CONFIG) {
   assertValidDateString(dateString);
 
-  if (dateString < HARD_PUZZLE_START_DATE) {
-    return [
-      {
-        id: 'medium',
-        label: MEDIUM_DIFFICULTY,
-        targetClues: MEDIUM_TARGET_CLUES,
-        clueTargets: [MEDIUM_TARGET_CLUES],
-        minScore: 0,
-        minHardestWeight: 0
-      }
-    ];
+  if (dateString < config.startDate) {
+    return [targetFromConfig('medium', config)];
   }
 
-  if (isWeekendDate(dateString)) {
-    return [fiendishTarget(), superFiendishTarget()];
+  if (config.override.enabled) {
+    return config.override.puzzles.map((id) => targetFromConfig(id, config));
   }
 
-  return [veryDifficultTarget(), fiendishTarget()];
+  const exactDateTargets = config.schedule.dates[dateString];
+  if (exactDateTargets) {
+    return exactDateTargets.map((id) => targetFromConfig(id, config));
+  }
+
+  const scheduledIds = isWeekendDate(dateString) ? config.schedule.weekends : config.schedule.weekdays;
+  return scheduledIds.map((id) => targetFromConfig(id, config));
 }
 
 export function puzzleSettingsForDate(dateString) {
@@ -919,36 +952,21 @@ export function puzzleSettingsForDate(dateString) {
   };
 }
 
-function veryDifficultTarget() {
-  return {
-    id: 'very-difficult',
-    label: VERY_DIFFICULT_DIFFICULTY,
-    targetClues: 28,
-    clueTargets: [28, 27, 29, 30],
-    minScore: 62,
-    minHardestWeight: 10
-  };
-}
+function targetFromConfig(id, config = SUDOKU_CONFIG) {
+  const level = config.difficultyLevels[id];
+  if (!level) {
+    throw new RangeError(`Unknown Sudoku difficulty target: ${id}`);
+  }
 
-function fiendishTarget() {
   return {
-    id: 'fiendish',
-    label: FIENDISH_DIFFICULTY,
-    targetClues: 27,
-    clueTargets: [27, 26, 28, 25],
-    minScore: 88,
-    minHardestWeight: 14
-  };
-}
-
-function superFiendishTarget() {
-  return {
-    id: 'super-fiendish',
-    label: SUPER_FIENDISH_DIFFICULTY,
-    targetClues: 26,
-    clueTargets: [26, 25, 24, 27, 28],
-    minScore: 130,
-    minHardestWeight: 24
+    id,
+    label: level.label,
+    targetClues: level.targetClues,
+    clueTargets: [...level.clueTargets],
+    minScore: level.minScore,
+    minHardestWeight: level.minHardestWeight,
+    minNonSingleSteps: level.minNonSingleSteps,
+    allowUnsolvedWithoutGuessing: level.allowUnsolvedWithoutGuessing
   };
 }
 
@@ -970,7 +988,12 @@ function buildPuzzleForDate(dateString, targetClues) {
     }
   }
 
-  return { puzzle: best.puzzle, solution: best.solution };
+  return {
+    puzzle: best.puzzle,
+    solution: best.solution,
+    clueCount: best.clues,
+    reachedTargetClues: best.clues === targetClues
+  };
 }
 
 function buildGradedPuzzleForTarget(dateString, target, number) {
@@ -978,24 +1001,30 @@ function buildGradedPuzzleForTarget(dateString, target, number) {
 
   for (let attempt = 0; attempt < MAX_GRADED_ATTEMPTS; attempt += 1) {
     const targetClues = target.clueTargets[attempt % target.clueTargets.length];
-    const seedInput = `daily-sudoku:${dateString}:${target.id}:${attempt}`;
+    const seedInput = `daily-sudoku:v${SUDOKU_CONFIG.seedVersion}:${dateString}:${target.id}:${number}:${attempt}`;
     const solution = createSolvedGrid(`${seedInput}:solution`);
     const puzzle = makePuzzle(solution, `${seedInput}:puzzle`, targetClues);
     const clues = clueCount(puzzle);
     const grade = gradeSudokuPuzzle(puzzle);
+    const solutionCount = countSolutions(puzzle, 2);
     const candidate = {
       number,
-      label: target.label,
+      label: safeDisplayLabelFor(grade),
       requestedLabel: target.label,
+      measuredLabel: grade.label,
+      targetMet: false,
+      fallbackReason: null,
       puzzle,
       solution,
       clueCount: clues,
       grade,
+      generationAttempts: attempt + 1,
+      solutionCount,
       fallback: false
     };
 
     if (candidateMatchesTarget(candidate, target)) {
-      return candidate;
+      return finalizeCandidate(candidate, target, true);
     }
 
     if (!best || candidateRank(candidate, target) > candidateRank(best, target)) {
@@ -1003,46 +1032,110 @@ function buildGradedPuzzleForTarget(dateString, target, number) {
     }
   }
 
-  return {
-    ...best,
-    label: fallbackLabelFor(best.grade, target),
-    fallback: fallbackLabelFor(best.grade, target) !== target.label
-  };
+  return finalizeCandidate(best, target, false);
 }
 
 function candidateMatchesTarget(candidate, target) {
   const grade = candidate.grade;
 
   if (target.id === 'medium') {
-    return candidate.clueCount === target.targetClues && countSolutions(candidate.puzzle, 2) === 1;
+    return candidate.clueCount === target.targetClues && candidate.solutionCount === 1;
   }
 
-  if (grade.invalid || grade.singlesOnly || countSolutions(candidate.puzzle, 2) !== 1) {
+  if (grade.invalid || grade.singlesOnly || candidate.solutionCount !== 1) {
     return false;
   }
 
-  if (target.id === 'super-fiendish' && !grade.solvedWithoutGuessing) {
-    return true;
+  if (!target.allowUnsolvedWithoutGuessing && !grade.solvedWithoutGuessing) {
+    return false;
   }
 
-  return grade.solvedWithoutGuessing && grade.score >= target.minScore && grade.hardestWeight >= target.minHardestWeight;
+  return (
+    grade.score >= target.minScore &&
+    grade.hardestWeight >= target.minHardestWeight &&
+    grade.nonSingleSteps >= target.minNonSingleSteps
+  );
 }
 
 function candidateRank(candidate, target) {
   const grade = candidate.grade;
-  const cluePenalty = Math.abs(candidate.clueCount - target.targetClues) * 3;
-  const unsolvedBonus = target.id === 'super-fiendish' && !grade.solvedWithoutGuessing && !grade.singlesOnly ? 70 : 0;
-  const singlesPenalty = grade.singlesOnly ? 120 : 0;
 
-  return grade.score + grade.hardestWeight * 6 + grade.nonSingleSteps * 10 + unsolvedBonus - cluePenalty - singlesPenalty;
-}
-
-function fallbackLabelFor(grade, target) {
-  if (target.id === 'super-fiendish' && grade?.label !== SUPER_FIENDISH_DIFFICULTY) {
-    return grade?.label || FIENDISH_DIFFICULTY;
+  if (grade.invalid || candidate.solutionCount !== 1) {
+    return Number.NEGATIVE_INFINITY;
   }
 
-  return target.label;
+  const cluePenalty = Math.abs(candidate.clueCount - target.targetClues) * 3;
+  const singlesPenalty = grade.singlesOnly ? 10000 : 0;
+  const unsolvedPenalty = !target.allowUnsolvedWithoutGuessing && !grade.solvedWithoutGuessing ? 5000 : 0;
+
+  return (
+    grade.score +
+    grade.hardTechniqueScore * 2 +
+    grade.hardestWeight * 6 +
+    grade.nonSingleSteps * 10 -
+    cluePenalty -
+    singlesPenalty -
+    unsolvedPenalty
+  );
+}
+
+function finalizeCandidate(candidate, target, targetMet) {
+  const fallbackReason = targetMet ? null : fallbackReasonFor(candidate, target);
+
+  return {
+    ...candidate,
+    label: targetMet ? target.label : safeDisplayLabelFor(candidate.grade),
+    requestedLabel: target.label,
+    measuredLabel: candidate.grade?.label || 'Invalid',
+    targetMet,
+    fallback: !targetMet,
+    fallbackReason
+  };
+}
+
+function safeDisplayLabelFor(grade) {
+  if (!grade || grade.invalid) {
+    return 'Invalid';
+  }
+
+  if (grade.singlesOnly) {
+    return 'Too Easy';
+  }
+
+  if (!grade.solvedWithoutGuessing) {
+    return FIENDISH_DIFFICULTY;
+  }
+
+  return grade.label;
+}
+
+function fallbackReasonFor(candidate, target) {
+  const grade = candidate.grade;
+  const reasons = [];
+
+  if (!grade || grade.invalid) {
+    reasons.push('grade invalid');
+  }
+  if (candidate.solutionCount !== 1) {
+    reasons.push(`solution count ${candidate.solutionCount}`);
+  }
+  if (grade?.singlesOnly) {
+    reasons.push('singles only');
+  }
+  if (grade && !target.allowUnsolvedWithoutGuessing && !grade.solvedWithoutGuessing) {
+    reasons.push('solver stuck');
+  }
+  if (grade && grade.score < target.minScore) {
+    reasons.push(`score ${grade.score} below ${target.minScore}`);
+  }
+  if (grade && grade.hardestWeight < target.minHardestWeight) {
+    reasons.push(`hardest weight ${grade.hardestWeight} below ${target.minHardestWeight}`);
+  }
+  if (grade && grade.nonSingleSteps < target.minNonSingleSteps) {
+    reasons.push(`non-single steps ${grade.nonSingleSteps} below ${target.minNonSingleSteps}`);
+  }
+
+  return reasons.length > 0 ? reasons.join('; ') : 'target missed';
 }
 
 function isWeekendDate(dateString) {
@@ -1054,17 +1147,26 @@ function isWeekendDate(dateString) {
 export function generateSudokuForDate(dateString = todayInLondon()) {
   assertValidDateString(dateString);
   const targets = puzzleTargetsForDate(dateString);
-  const puzzles =
+  const legacyPuzzle =
     targets.length === 1 && targets[0].id === 'medium'
+      ? buildPuzzleForDate(dateString, targets[0].targetClues)
+      : null;
+  const puzzles =
+    legacyPuzzle
       ? [
           {
             number: 1,
             label: targets[0].label,
             requestedLabel: targets[0].label,
-            ...buildPuzzleForDate(dateString, targets[0].targetClues),
-            clueCount: targets[0].targetClues,
+            measuredLabel: targets[0].label,
+            targetMet: legacyPuzzle.reachedTargetClues,
+            fallbackReason: legacyPuzzle.reachedTargetClues
+              ? null
+              : `clue count ${legacyPuzzle.clueCount} did not reach ${targets[0].targetClues}`,
+            ...legacyPuzzle,
             grade: null,
-            fallback: false
+            generationAttempts: null,
+            fallback: !legacyPuzzle.reachedTargetClues
           }
         ]
       : targets.map((target, index) => buildGradedPuzzleForTarget(dateString, target, index + 1));

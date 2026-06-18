@@ -109,7 +109,9 @@ Notes:
 
 ## Current Difficulty Schedule
 
-The schedule is hard-coded in `src/sudoku.js`.
+The schedule is now configured in `src/sudoku-config.js`. This is a plain
+JavaScript config module rather than YAML because the same generator runs in
+both the browser and Node server without a bundler or runtime config loader.
 
 ```js
 export const HARD_PUZZLE_START_DATE = '2026-06-18';
@@ -124,66 +126,40 @@ export const DIFFICULTY = MEDIUM_DIFFICULTY;
 export const TARGET_CLUES = MEDIUM_TARGET_CLUES;
 ```
 
-Before `2026-06-18`, the system preserves the old one-puzzle behavior:
+Before `2026-06-18`, the system preserves the old one-puzzle behavior. From the
+configured start date onward, target IDs are resolved from:
+
+- `override.puzzles`, if `override.enabled` is true.
+- `schedule.dates[date]`, if an exact date override exists.
+- `schedule.weekends`, for Saturday/Sunday.
+- `schedule.weekdays`, otherwise.
+
+The current default schedule is:
 
 ```js
-export function puzzleTargetsForDate(dateString) {
-  assertValidDateString(dateString);
-
-  if (dateString < HARD_PUZZLE_START_DATE) {
-    return [
-      {
-        id: 'medium',
-        label: MEDIUM_DIFFICULTY,
-        targetClues: MEDIUM_TARGET_CLUES,
-        clueTargets: [MEDIUM_TARGET_CLUES],
-        minScore: 0,
-        minHardestWeight: 0
-      }
-    ];
-  }
-
-  if (isWeekendDate(dateString)) {
-    return [fiendishTarget(), superFiendishTarget()];
-  }
-
-  return [veryDifficultTarget(), fiendishTarget()];
+schedule: {
+  weekdays: ['very-difficult', 'fiendish'],
+  weekends: ['fiendish', 'super-fiendish'],
+  dates: {}
 }
 ```
 
-Difficulty target definitions:
+The target resolver still exports `puzzleTargetsForDate(dateString)`, but it now
+normalizes target objects from the config:
 
 ```js
-function veryDifficultTarget() {
-  return {
-    id: 'very-difficult',
-    label: VERY_DIFFICULT_DIFFICULTY,
-    targetClues: 28,
-    clueTargets: [28, 27, 29, 30],
-    minScore: 62,
-    minHardestWeight: 10
-  };
-}
+function targetFromConfig(id, config = SUDOKU_CONFIG) {
+  const level = config.difficultyLevels[id];
 
-function fiendishTarget() {
   return {
-    id: 'fiendish',
-    label: FIENDISH_DIFFICULTY,
-    targetClues: 27,
-    clueTargets: [27, 26, 28, 25],
-    minScore: 88,
-    minHardestWeight: 14
-  };
-}
-
-function superFiendishTarget() {
-  return {
-    id: 'super-fiendish',
-    label: SUPER_FIENDISH_DIFFICULTY,
-    targetClues: 26,
-    clueTargets: [26, 25, 24, 27, 28],
-    minScore: 130,
-    minHardestWeight: 24
+    id,
+    label: level.label,
+    targetClues: level.targetClues,
+    clueTargets: [...level.clueTargets],
+    minScore: level.minScore,
+    minHardestWeight: level.minHardestWeight,
+    minNonSingleSteps: level.minNonSingleSteps,
+    allowUnsolvedWithoutGuessing: level.allowUnsolvedWithoutGuessing
   };
 }
 ```
@@ -1172,106 +1148,56 @@ assert.deepEqual(
    - It then searches for candidates that happen to require harder techniques.
    - It does not construct puzzles by deliberately forcing specific techniques.
 
-6. No simple difficulty configuration file yet.
-   - Changing schedules or thresholds currently means editing JavaScript.
-   - The user wants a human-readable config file to control difficulty by date/day and optionally override every puzzle globally.
+6. The difficulty configuration is intentionally simple.
+   - `src/sudoku-config.js` controls schedules, thresholds, seed version, and override behavior.
+   - It is validated at module load so a bad edit fails loudly in tests/server startup.
+   - It is not YAML; this avoids adding a parser and keeps browser/server generation identical.
 
-## Proposed Human-Editable Difficulty Config
+## Human-Editable Difficulty Config
 
-This does not exist yet. The user asked for a simple file, likely YAML or Markdown, that can be edited later without diving into code.
+The implemented config lives in `src/sudoku-config.js`. The earlier YAML idea
+was intentionally simplified to avoid a dependency and a build-time conversion
+step.
 
-Suggested YAML shape:
+Current config shape:
 
-```yaml
-# config/sudoku-difficulty.yml
-
-start_date: "2026-06-18"
-
-override:
-  enabled: false
-  puzzles:
-    - fiendish
-    - super_fiendish
-
-schedule:
-  weekdays:
-    - very_difficult
-    - fiendish
-  weekends:
-    - fiendish
-    - super_fiendish
-
-  # Optional one-off date overrides.
-  dates:
-    "2026-12-25":
-      - fiendish
-      - super_fiendish
-    "2026-12-26":
-      - super_fiendish
-      - super_fiendish
-
-difficulty_levels:
-  medium:
-    label: "medium"
-    target_clues: 34
-    clue_targets: [34]
-    min_score: 0
-    min_hardest_weight: 0
-
-  very_difficult:
-    label: "Very Difficult"
-    target_clues: 28
-    clue_targets: [28, 27, 29, 30]
-    min_score: 62
-    min_hardest_weight: 10
-
-  fiendish:
-    label: "Fiendish"
-    target_clues: 27
-    clue_targets: [27, 26, 28, 25]
-    min_score: 88
-    min_hardest_weight: 14
-
-  super_fiendish:
-    label: "Super Fiendish"
-    target_clues: 26
-    clue_targets: [26, 25, 24, 27, 28]
-    min_score: 130
-    min_hardest_weight: 24
-    allow_unsolved_without_guessing: true
-
-grader:
-  max_graded_attempts: 260
-  technique_weights:
-    naked_single: 1
-    hidden_single: 2
-    locked_candidate: 10
-    naked_pair: 14
-    hidden_pair: 16
-    naked_triple: 24
-    hidden_triple: 28
-    x_wing: 38
-    unsolved_without_guessing: 52
+```js
+{
+  startDate: '2026-06-18',
+  seedVersion: 1,
+  override: {
+    enabled: false,
+    puzzles: ['fiendish', 'super-fiendish']
+  },
+  schedule: {
+    weekdays: ['very-difficult', 'fiendish'],
+    weekends: ['fiendish', 'super-fiendish'],
+    dates: {}
+  },
+  difficultyLevels: {
+    'very-difficult': {
+      label: 'Very Difficult',
+      targetClues: 28,
+      clueTargets: [28, 27, 29, 30],
+      minScore: 55,
+      minHardestWeight: 10,
+      minNonSingleSteps: 1,
+      allowUnsolvedWithoutGuessing: false
+    }
+  }
+}
 ```
 
-Desired config behavior:
+Config behavior:
 
 - If `override.enabled` is `true`, every date uses `override.puzzles`.
 - If `override.enabled` is `false`, the system uses:
   - exact date override if present,
   - otherwise `schedule.weekends` for Saturday/Sunday,
   - otherwise `schedule.weekdays`.
-- Difficulty level IDs map to `difficulty_levels`.
-- Config should be validated at startup or build time.
-- If config is invalid, the app should fail loudly during tests/server start, not silently print easy puzzles.
-
-Implementation questions:
-
-- Should this be YAML, JSON, or a Markdown table?
-- This project currently has no runtime npm dependencies. YAML parsing would likely require adding a dependency, unless we use JSON or a deliberately tiny custom parser.
-- JSON is less friendly for non-technical edits, but much easier to parse without dependencies.
-- A Markdown table is human-readable but awkward to parse robustly.
-- YAML is probably the nicest for the user, but adds a package or custom parser.
+- Difficulty level IDs map to `difficultyLevels`.
+- Config is validated at module load.
+- If config is invalid, the app fails loudly during tests/server start rather than silently printing easy puzzles.
 
 ## Possible Improvements To Consider
 
@@ -1300,10 +1226,11 @@ Implementation questions:
    - Enforce rotational symmetry if aesthetically desired.
    - Track distribution of givens by box/row/column.
 
-6. Add a difficulty audit script.
-   - Generate the next 30 or 365 days.
-   - Output date, labels, clue counts, scores, hardest techniques, and fallback flags.
-   - This would make regressions obvious before deployment.
+6. Maintain the difficulty audit script.
+   - `npm run sudoku:audit -- --from 2026-06-18 --days 30`
+   - `npm run sudoku:audit -- --from 2026-06-18 --days 365 --format csv`
+   - `npm run sudoku:audit:ci`
+   - The CI mode fails on uniqueness/solution/singles-only problems and warns on target downgrades by default.
 
 7. Strengthen tests.
    - Test a larger range of dates.

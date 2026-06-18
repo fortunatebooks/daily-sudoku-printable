@@ -416,32 +416,39 @@ function drawWeatherMetric(doc, label, value, x, y, width) {
 
 function drawWeatherDayRow(doc, day, box) {
   const summary = weatherGardenSummary(day);
+  const textLineHeight = 10.5;
+  const summaryBlockHeight = textLineHeight * 2;
+  const contentHeight = Math.max(22, summaryBlockHeight);
+  const contentTop = box.y + Math.max(8, (box.height - contentHeight) / 2);
+  const singleLineY = contentTop + Math.max(0, (contentHeight - 10.5) / 2);
+  const iconCenterY = contentTop + contentHeight / 2;
+  const iconSize = 12;
 
   drawLine(doc, box.x, box.y, box.x + box.width, box.y, 0.25, GREY.rule);
-  doc.font(FONTS.sansBold).fontSize(9.6).text(shortWeatherRowDayLabel(day.dateIso), box.x + 8, box.y + 10, {
+  doc.font(FONTS.sansBold).fontSize(9.6).text(shortWeatherRowDayLabel(day.dateIso), box.x + 8, singleLineY, {
     width: 34
   });
-  drawWeatherIcon(doc, day.icon, box.x + 56, box.y + 12, 12);
-  doc.font(FONTS.sansBold).fontSize(9.1).text(shortTemperature(day), box.x + 82, box.y + 10, {
+  drawWeatherIcon(doc, day.icon, box.x + 56, iconCenterY + iconSize * 0.18, iconSize);
+  doc.font(FONTS.sansBold).fontSize(9.1).text(shortTemperature(day), box.x + 82, singleLineY, {
     width: 48
   });
   drawFitText(doc, summary.rainSummary, {
     x: box.x + 136,
-    y: box.y + 8,
+    y: contentTop,
     width: box.width - 144,
     font: FONTS.sans,
     size: 9.1,
     maxLines: 1,
-    lineHeight: 10.5
+    lineHeight: textLineHeight
   });
   drawFitText(doc, summary.windSummary, {
     x: box.x + 136,
-    y: box.y + 22,
+    y: contentTop + textLineHeight + 3,
     width: box.width - 144,
     font: FONTS.sans,
     size: 9.1,
     maxLines: 1,
-    lineHeight: 10.5
+    lineHeight: textLineHeight
   });
 }
 

@@ -36,20 +36,21 @@ const LAYOUT = {
   titleY: 16,
   dateY: 36,
   mastheadRuleY: 64,
-  puzzleX: 32,
-  puzzleOneGridY: 95,
-  puzzleTwoGridY: 343,
+  puzzleX: 28,
+  puzzleOneGridY: 78,
+  puzzleTwoGridY: 330,
   puzzleLabelOffset: 17,
-  puzzleGridSize: 228,
-  weatherX: 280,
+  puzzleGridSize: 242,
+  weatherX: 300,
   weatherY: 78,
-  weatherWidth: 283,
+  weatherWidth: 263,
+  puzzleSummaryHeight: 58,
   tvX: 32,
-  tvY: 596,
+  tvY: 586,
   tvWidth: 531,
-  tvHeight: 218
+  tvHeight: 228
 };
-LAYOUT.weatherHeight = LAYOUT.tvY - LAYOUT.weatherY - 18;
+LAYOUT.weatherHeight = LAYOUT.tvY - LAYOUT.weatherY - LAYOUT.puzzleSummaryHeight - 16;
 const GREY = {
   rail: '#f5f5f5',
   rule: '#555555'
@@ -126,7 +127,9 @@ function drawPage(doc, puzzles, displayDate, options = {}) {
       tvY: LAYOUT.tvY,
       tvHeight: LAYOUT.tvHeight,
       weatherY: LAYOUT.weatherY,
-      weatherHeight: LAYOUT.weatherHeight
+      weatherHeight: LAYOUT.weatherHeight,
+      weatherX: LAYOUT.weatherX,
+      weatherWidth: LAYOUT.weatherWidth
     };
   }
 
@@ -143,9 +146,15 @@ function drawPage(doc, puzzles, displayDate, options = {}) {
     });
   }
 
-  drawWeatherPanel(doc, options.weather, {
+  drawPuzzleSummaryPanel(doc, puzzles, {
     x: LAYOUT.weatherX,
     y: LAYOUT.weatherY,
+    width: LAYOUT.weatherWidth,
+    height: LAYOUT.puzzleSummaryHeight
+  });
+  drawWeatherPanel(doc, options.weather, {
+    x: LAYOUT.weatherX,
+    y: LAYOUT.weatherY + LAYOUT.puzzleSummaryHeight + 12,
     width: LAYOUT.weatherWidth,
     height: LAYOUT.weatherHeight
   });
@@ -178,20 +187,31 @@ function drawMasthead(doc, title, displayDate) {
 }
 
 function drawPuzzlePanel(doc, puzzle, metrics) {
-  const labelY = metrics.gridY - LAYOUT.puzzleLabelOffset;
-  const label = `PUZZLE ${puzzle.number} - ${cleanPdfText(puzzle.label).toUpperCase()}`;
-
-  doc
-    .font(FONTS.sansBold)
-    .fontSize(10.2)
-    .fillColor('black')
-    .text(label, metrics.gridX, labelY, {
-      width: LAYOUT.puzzleGridSize,
-      height: 14,
-      align: 'left'
-    });
   drawGrid(doc, metrics.gridX, metrics.gridY, LAYOUT.puzzleGridSize);
   drawGivens(doc, puzzle.givens, metrics.gridX, metrics.gridY, LAYOUT.puzzleGridSize / 9);
+}
+
+function drawPuzzleSummaryPanel(doc, puzzles, box) {
+  doc
+    .font(FONTS.serifBold)
+    .fontSize(13.2)
+    .fillColor('black')
+    .text("TODAY'S SUDOKU", box.x, box.y - 1, {
+      width: box.width,
+      height: 18
+    });
+  drawLine(doc, box.x, box.y + 21, box.x + box.width, box.y + 21, 0.65);
+
+  puzzles.slice(0, 2).forEach((puzzle, index) => {
+    const label = `Puzzle ${puzzle.number} - ${cleanPdfText(puzzle.label)}`;
+    doc
+      .font(FONTS.sansBold)
+      .fontSize(9.6)
+      .text(label, box.x + 8, box.y + 29 + index * 13, {
+        width: box.width - 16,
+        height: 12
+      });
+  });
 }
 
 function drawGrid(doc, x, y, size) {
@@ -206,7 +226,7 @@ function drawGrid(doc, x, y, size) {
 }
 
 function drawGivens(doc, givens, gridX, gridY, cellSize) {
-  const numberSize = Math.min(17, cellSize * 0.65);
+  const numberSize = Math.min(18, cellSize * 0.65);
 
   doc.font(FONTS.sansSemi).fontSize(numberSize).fillColor('black');
   const lineHeight = doc.currentLineHeight();
@@ -266,9 +286,19 @@ function drawWeatherPanel(doc, weather, box) {
     height: todayH
   });
 
-  const rowH = 40;
+  const futureDays = days.slice(1, 4);
   const rowStartY = todayY + todayH + 8;
-  days.slice(1, 4).forEach((day, index) => {
+  const note = weatherBottomGardenNote(today);
+  const noteBlockH = note ? 32 : 0;
+  const rowH =
+    futureDays.length > 0
+      ? Math.max(
+          40,
+          Math.min(68, (box.y + box.height - rowStartY - noteBlockH - 8) / futureDays.length)
+        )
+      : 40;
+
+  futureDays.forEach((day, index) => {
     drawWeatherDayRow(doc, day, {
       x: box.x,
       y: rowStartY + index * rowH,
@@ -277,9 +307,8 @@ function drawWeatherPanel(doc, weather, box) {
     });
   });
 
-  const note = weatherBottomGardenNote(today);
   if (note) {
-    const noteY = rowStartY + Math.max(1, days.slice(1, 4).length) * rowH + 16;
+    const noteY = rowStartY + Math.max(1, futureDays.length) * rowH + 12;
 
     if (noteY + 18 > box.y + box.height) {
       return;
@@ -379,7 +408,7 @@ function drawTvPanel(doc, tvListings, box, options = {}) {
   doc.rect(box.x, box.y, box.width, box.height).lineWidth(0.55).strokeColor('black').stroke();
 
   const rows = normalizeTvChannels(tvListings);
-  const topPadding = 4;
+  const topPadding = 0;
   const bottomPadding = 4;
   const rowH = (box.height - topPadding - bottomPadding) / TV_CHANNEL_COUNT;
   const labelW = 68;

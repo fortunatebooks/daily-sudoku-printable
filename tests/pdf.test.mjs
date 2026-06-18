@@ -258,13 +258,13 @@ test('builds the embedded-font server PDF without omitting TV listings', async (
   const fifthRow = layoutDebug.tvRows[4];
 
   assert.equal(new TextDecoder('ascii').decode(bytes.slice(0, 8)), '%PDF-1.3');
-  assert.equal(layoutDebug.page.puzzleGridSize, 228);
+  assert.equal(layoutDebug.page.puzzleGridSize, 242);
   assert.equal(layoutDebug.page.mastheadRuleY, 64);
-  assert.equal(layoutDebug.page.tvY, 596);
-  assert.equal(layoutDebug.page.tvHeight, 218);
+  assert.equal(layoutDebug.page.tvY, 586);
+  assert.equal(layoutDebug.page.tvHeight, 228);
   assert.equal(firstRow.heading, 'BBC One');
   assert.equal(fifthRow.heading, 'Channel 5');
-  assert.ok(firstRow.rowHeight < 43);
+  assert.ok(firstRow.rowHeight < 45);
   assert.equal(firstRow.programmes.length, tvPrograms.length);
   assert.deepEqual(
     firstRow.programmes.map((programme) => programme.time),

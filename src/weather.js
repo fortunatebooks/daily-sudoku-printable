@@ -438,7 +438,7 @@ export function weatherPdfLines(weather) {
       ...weather.days.slice(0, 4).map((day, index) => {
         const label = index === 0 ? 'Today' : shortDayLabel(day.dateIso);
         const rainy = stripDetailPrefix(day.rainyPeriodsLabel);
-        return truncatePdfLine(`${label}: ${day.label}, ${shortTemperature(day)}, rain ${rainy}, sun ${shortSun(day)}, moon ${day.moonPhase}`);
+        return truncatePdfLine(`${label}: ${day.headline || day.label}, ${shortTemperature(day)}, rain ${rainy}, sun ${shortSun(day)}, moon ${day.moonPhase}`);
       })
     ];
   }
@@ -461,6 +461,7 @@ export function weatherPdfLines(weather) {
 function normalizeWeatherDay({ daily, hourly, index, dateIso }) {
   const code = numberOrNull(daily.weather_code?.[index]);
   const periods = summarizePeriods(hourly, dateIso);
+  const hourlyDetail = summarizeOpenMeteoDayparts(hourly, dateIso);
   const highC = numberOrNull(daily.temperature_2m_max?.[index]);
   const lowC = numberOrNull(daily.temperature_2m_min?.[index]);
   const apparentHighC = numberOrNull(daily.apparent_temperature_max?.[index]);
@@ -497,6 +498,8 @@ function normalizeWeatherDay({ daily, hourly, index, dateIso }) {
     temperatureLabel: `High ${formatTemperature(highC)} / Low ${formatTemperature(lowC)}`,
     sunnyPeriods: periods.sunny,
     rainyPeriods: periods.rainy,
+    daypartForecasts: hourlyDetail.daypartForecasts,
+    rainWindows: hourlyDetail.rainWindows,
     sunnyPeriodsLabel,
     rainyPeriodsLabel,
     sunrise,
@@ -506,6 +509,7 @@ function normalizeWeatherDay({ daily, hourly, index, dateIso }) {
     moonLabel: `Moon: ${moonPhase}`
   };
   day.gardenSummary = gardenSummaryForDay(day);
+  day.headline = weatherHeadlineForDay(day);
 
   return day;
 }
@@ -521,6 +525,7 @@ function normalizeWttrDay(sourceDay) {
   const representativeHour = hourly.find((hour) => normalizeWttrHour(hour?.time) === 12) || hourly[0] || {};
   const label = cleanWeatherText(representativeHour.weatherDesc?.[0]?.value || sourceDay.weatherDesc?.[0]?.value) || 'Forecast';
   const periods = summarizeWttrPeriods(hourly);
+  const hourlyDetail = summarizeWttrDayparts(hourly);
   const highC = numberOrNull(sourceDay.maxtempC) ?? maxNumber(hourly.map((hour) => hour.tempC));
   const lowC = numberOrNull(sourceDay.mintempC) ?? minNumber(hourly.map((hour) => hour.tempC));
   const precipitationSumMm = sumNumbers(hourly.map((hour) => hour.precipMM));
@@ -549,6 +554,8 @@ function normalizeWttrDay(sourceDay) {
     temperatureLabel: `High ${formatTemperature(highC)} / Low ${formatTemperature(lowC)}`,
     sunnyPeriods: periods.sunny,
     rainyPeriods: periods.rainy,
+    daypartForecasts: hourlyDetail.daypartForecasts,
+    rainWindows: hourlyDetail.rainWindows,
     sunnyPeriodsLabel,
     rainyPeriodsLabel,
     sunrise,
@@ -558,8 +565,151 @@ function normalizeWttrDay(sourceDay) {
     moonLabel: `Moon: ${moonPhase}`
   };
   day.gardenSummary = gardenSummaryForDay(day);
+  day.headline = weatherHeadlineForDay(day);
 
   return day;
+}
+
+function summarizeOpenMeteoDayparts(hourly, dateIso) {
+  if (!hourly || !Array.isArray(hourly.time)) {
+    return { daypartForecasts: [], rainWindows: [] };
+  }
+
+  const daypartForecasts = [];
+  const rainWindows = [];
+
+  for (const period of PERIODS) {
+    const entries = hourly.time
+      .map((time, index) => ({ time, index, hour: hourFromLocalTime(time) }))
+      .filter((entry) => entry.time?.startsWith(`${dateIso}T`) && entry.hour >= period.startHour && entry.hour < period.endHour);
+    const rainEntries = entries.filter((entry) => isRainyHour(hourly, entry.index));
+    const windows = rainWindowsFromEntries(rainEntries, (entry) => ({
+      hour: entry.hour,
+      code: numberOrNull(hourly.weather_code?.[entry.index]),
+      precipitationMm: numberOrNull(hourly.precipitation?.[entry.index]),
+      probability: numberOrNull(hourly.precipitation_probability?.[entry.index])
+    }));
+
+    rainWindows.push(...windows);
+    daypartForecasts.push(daypartForecastForPeriod(period, entries, windows, (entry) => ({
+      code: numberOrNull(hourly.weather_code?.[entry.index]),
+      precipitationMm: numberOrNull(hourly.precipitation?.[entry.index]),
+      probability: numberOrNull(hourly.precipitation_probability?.[entry.index])
+    })));
+  }
+
+  return { daypartForecasts, rainWindows };
+}
+
+function summarizeWttrDayparts(hourly) {
+  if (!Array.isArray(hourly) || hourly.length === 0) {
+    return { daypartForecasts: [], rainWindows: [] };
+  }
+
+  const daypartForecasts = [];
+  const rainWindows = [];
+
+  for (const period of PERIODS) {
+    const entries = hourly
+      .map((hour) => ({ hour, localHour: normalizeWttrHour(hour?.time) }))
+      .filter((entry) => entry.localHour >= period.startHour && entry.localHour < period.endHour);
+    const rainEntries = entries.filter(({ hour }) => isRainyWttrHour(hour));
+    const windows = rainWindowsFromEntries(rainEntries, (entry) => ({
+      hour: entry.localHour,
+      code: numberOrNull(entry.hour?.weatherCode),
+      precipitationMm: numberOrNull(entry.hour?.precipMM),
+      probability: numberOrNull(entry.hour?.chanceofrain),
+      text: cleanWeatherText(entry.hour?.weatherDesc?.[0]?.value)
+    }));
+
+    rainWindows.push(...windows);
+    daypartForecasts.push(daypartForecastForPeriod(period, entries, windows, (entry) => ({
+      code: numberOrNull(entry.hour?.weatherCode),
+      precipitationMm: numberOrNull(entry.hour?.precipMM),
+      probability: numberOrNull(entry.hour?.chanceofrain),
+      text: cleanWeatherText(entry.hour?.weatherDesc?.[0]?.value)
+    })));
+  }
+
+  return { daypartForecasts, rainWindows };
+}
+
+function daypartForecastForPeriod(period, entries, rainWindows, detailForEntry) {
+  if (entries.length === 0) {
+    return {
+      name: period.name,
+      shortLabel: shortPeriodLabel(period.name),
+      label: 'No data',
+      icon: 'cloud'
+    };
+  }
+
+  if (rainWindows.length > 0) {
+    return {
+      name: period.name,
+      shortLabel: shortPeriodLabel(period.name),
+      label: `${rainTypeForWindows(rainWindows)} ${rainWindowText(rainWindows)}`,
+      icon: 'rain'
+    };
+  }
+
+  const sunnyHours = entries.filter((entry) => isSunnyWeatherCode(detailForEntry(entry).code)).length;
+  const details = entries.map(detailForEntry);
+  const cloudyHours = details.filter((detail) => Number(detail.code) === 2 || Number(detail.code) === 3).length;
+
+  if (sunnyHours >= Math.max(1, Math.ceil(entries.length / 3))) {
+    return {
+      name: period.name,
+      shortLabel: shortPeriodLabel(period.name),
+      label: 'Sunny spells',
+      icon: 'sun'
+    };
+  }
+
+  return {
+    name: period.name,
+    shortLabel: shortPeriodLabel(period.name),
+    label: cloudyHours > 0 ? 'Mostly dry' : 'Dry',
+    icon: cloudyHours > 0 ? 'cloud' : 'sun'
+  };
+}
+
+function rainWindowsFromEntries(entries, detailForEntry) {
+  const windows = [];
+  let current = null;
+
+  for (const entry of entries) {
+    const detail = detailForEntry(entry);
+    const hour = detail.hour ?? entry.hour;
+
+    if (!current || hour > current.endHour) {
+      current = {
+        startHour: hour,
+        endHour: hour + 1,
+        precipitationMm: 0,
+        maxProbability: null,
+        codes: [],
+        labels: []
+      };
+      windows.push(current);
+    } else {
+      current.endHour = hour + 1;
+    }
+
+    current.precipitationMm += detail.precipitationMm ?? 0;
+    current.maxProbability =
+      detail.probability == null
+        ? current.maxProbability
+        : Math.max(current.maxProbability ?? 0, detail.probability);
+    if (detail.code != null) {
+      current.codes.push(detail.code);
+    }
+    if (detail.text) {
+      current.labels.push(detail.text);
+    }
+  }
+
+  return windows;
 }
 
 function summarizePeriods(hourly, dateIso) {
@@ -649,7 +799,7 @@ function isRainyWttrHour(hour) {
 function gardenSummaryForDay(day) {
   const windSummary = gardenWindLabel(day.windGustMph ?? day.windSpeedMph);
   const sunSummary = gardenSunLabel(day.sunshineHours);
-  const rainSummary = gardenRainLabel(day.precipitationProbabilityMax, day.precipitationSumMm, day.rainyPeriods);
+  const rainSummary = gardenRainLabel(day.precipitationProbabilityMax, day.precipitationSumMm, day.rainyPeriods, day.rainWindows);
   const frostSummary = day.lowC != null && day.lowC <= 2 ? 'Frost risk overnight' : 'No frost risk';
   const wateringSummary = gardenWateringLabel({
     highC: day.highC,
@@ -669,7 +819,11 @@ function gardenSummaryForDay(day) {
   };
 }
 
-function gardenRainLabel(probabilityMax, precipitationSum, rainyPeriods) {
+function gardenRainLabel(probabilityMax, precipitationSum, rainyPeriods, rainWindows = []) {
+  if (Array.isArray(rainWindows) && rainWindows.length > 0) {
+    return `${rainTypeForWindows(rainWindows)} ${rainWindowText(rainWindows)}`;
+  }
+
   if (precipitationSum != null && precipitationSum >= 8) {
     return 'Wet day';
   }
@@ -687,6 +841,81 @@ function gardenRainLabel(probabilityMax, precipitationSum, rainyPeriods) {
   }
 
   return 'Mostly dry';
+}
+
+function weatherHeadlineForDay(day) {
+  if (Array.isArray(day?.rainWindows) && day.rainWindows.length > 0) {
+    return `${rainTypeForWindows(day.rainWindows)} ${rainWindowText(day.rainWindows)}, dry otherwise`;
+  }
+
+  const label = cleanWeatherText(day?.label);
+  const rainSummary = cleanWeatherText(day?.gardenSummary?.rainSummary);
+
+  if (/^rain$/i.test(label) && rainSummary && !/^rain$/i.test(rainSummary)) {
+    return rainSummary;
+  }
+
+  return label || 'Forecast';
+}
+
+function rainTypeForWindows(windows) {
+  const totalRain = windows.reduce((total, window) => total + (window.precipitationMm || 0), 0);
+  const codes = windows.flatMap((window) => window.codes || []).map(Number);
+  const labels = windows.flatMap((window) => window.labels || []).join(' ').toLowerCase();
+
+  if (codes.some((code) => [80, 81, 82].includes(code)) || /shower/.test(labels)) {
+    return 'Showers';
+  }
+
+  if (totalRain >= 2 || codes.some((code) => [61, 63, 65, 66, 67].includes(code)) || /\brain\b/.test(labels)) {
+    return 'Rain';
+  }
+
+  if (codes.some((code) => [51, 53, 55, 56, 57].includes(code)) || /drizzle/.test(labels) || totalRain < 1) {
+    return 'Drizzle';
+  }
+
+  return 'Rain';
+}
+
+function rainWindowText(windows) {
+  if (!Array.isArray(windows) || windows.length === 0) {
+    return 'today';
+  }
+
+  return windows.map((window) => formatHourRange(window.startHour, window.endHour)).join(', ');
+}
+
+function formatHourRange(startHour, endHour) {
+  const start = formatCompactHour(startHour);
+  const end = formatCompactHour(endHour);
+  const startSuffix = start.match(/[ap]m$/)?.[0] || '';
+  const endSuffix = end.match(/[ap]m$/)?.[0] || '';
+
+  if (startSuffix && startSuffix === endSuffix) {
+    return `${start.replace(/[ap]m$/, '')}-${end}`;
+  }
+
+  return `${start}-${end}`;
+}
+
+function formatCompactHour(hour) {
+  const normalized = ((Number(hour) % 24) + 24) % 24;
+  const suffix = normalized < 12 ? 'am' : 'pm';
+  const displayHour = normalized % 12 || 12;
+  return `${displayHour}${suffix}`;
+}
+
+function shortPeriodLabel(name) {
+  if (name === 'morning') {
+    return 'Morn';
+  }
+
+  if (name === 'afternoon') {
+    return 'Aft';
+  }
+
+  return 'Eve';
 }
 
 function gardenWindLabel(maxGustMph) {

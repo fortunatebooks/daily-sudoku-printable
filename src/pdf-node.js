@@ -278,7 +278,7 @@ function drawWeatherPanel(doc, weather, box) {
   const days = weather.days.slice(0, 4);
   const today = days[0];
   const todayY = box.y + 36;
-  const todayH = 126;
+  const todayH = 144;
   drawTodayWeather(doc, today, {
     x: box.x,
     y: todayY,
@@ -338,24 +338,66 @@ function drawTodayWeather(doc, day, box) {
     align: 'right',
     width: box.width - 8
   });
-  drawWeatherIcon(doc, day.icon, box.x + 24, box.y + 38, 18);
-  drawFitText(doc, day.label || 'Forecast', {
-    x: box.x + 70,
-    y: box.y + 39,
-    width: box.width - 84,
+  drawFitText(doc, day.headline || day.label || 'Forecast', {
+    x: box.x + 8,
+    y: box.y + 35,
+    width: box.width - 16,
     font: FONTS.sans,
     size: 9.8,
-    maxLines: 2,
+    maxLines: 1,
     lineHeight: 11.2
   });
-  drawLine(doc, box.x + 8, box.y + 68, box.x + box.width - 8, box.y + 68, 0.35);
-  drawWeatherMetric(doc, 'Rain', summary.rainSummary, box.x + 8, box.y + 77, box.width - 16);
-  drawWeatherMetric(doc, 'Wind', summary.windSummary, box.x + 8, box.y + 88, box.width - 16);
-  drawWeatherMetric(doc, 'Garden', summary.wateringSummary, box.x + 8, box.y + 99, box.width - 16);
+  drawTodayDayparts(doc, day, {
+    x: box.x + 8,
+    y: box.y + 51,
+    width: box.width - 16,
+    height: 28
+  });
+  drawLine(doc, box.x + 8, box.y + 84, box.x + box.width - 8, box.y + 84, 0.35);
+  drawWeatherMetric(doc, 'Rain', summary.rainSummary, box.x + 8, box.y + 93, box.width - 16);
+  drawWeatherMetric(doc, 'Wind', summary.windSummary, box.x + 8, box.y + 104, box.width - 16);
+  drawWeatherMetric(doc, 'Garden', summary.wateringSummary, box.x + 8, box.y + 115, box.width - 16);
 
   if (daylight) {
-    drawWeatherMetric(doc, 'Daylight', daylight, box.x + 8, box.y + 110, box.width - 16);
+    drawWeatherMetric(doc, 'Daylight', daylight, box.x + 8, box.y + 126, box.width - 16);
   }
+}
+
+function drawTodayDayparts(doc, day, box) {
+  const parts = Array.isArray(day?.daypartForecasts) && day.daypartForecasts.length > 0
+    ? day.daypartForecasts.slice(0, 3)
+    : [
+        {
+          shortLabel: 'Day',
+          label: day?.label || 'Forecast',
+          icon: day?.icon || 'cloud'
+        }
+      ];
+  const columnWidth = box.width / parts.length;
+
+  parts.forEach((part, index) => {
+    const x = box.x + index * columnWidth;
+
+    doc
+      .font(FONTS.sansBold)
+      .fontSize(8.5)
+      .text(part.shortLabel || part.name || 'Day', x, box.y, {
+        width: columnWidth,
+        height: 9,
+        align: 'center',
+        lineBreak: false
+      });
+    drawWeatherIcon(doc, part.icon || 'cloud', x + 17, box.y + 17, 8);
+    drawFitText(doc, part.label || 'Forecast', {
+      x: x + 28,
+      y: box.y + 13,
+      width: columnWidth - 31,
+      font: FONTS.sans,
+      size: 8.5,
+      maxLines: 2,
+      lineHeight: 9.2
+    });
+  });
 }
 
 function drawWeatherMetric(doc, label, value, x, y, width) {

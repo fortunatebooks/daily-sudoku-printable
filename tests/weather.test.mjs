@@ -69,7 +69,12 @@ test('normalizes weather into compact display and PDF lines', () => {
   assert.equal(weather.precipitationSumMm, 1.4);
   assert.equal(Math.round(weather.sunshineHours), 5);
   assert.equal(weather.windGustMph, 18);
-  assert.equal(weather.gardenSummary.rainSummary, 'Rain likely after tea');
+  assert.equal(weather.gardenSummary.rainSummary, 'Rain 7-8pm');
+  assert.equal(weather.headline, 'Rain 7-8pm, dry otherwise');
+  assert.deepEqual(
+    weather.daypartForecasts.map((part) => `${part.shortLabel}: ${part.label}`),
+    ['Morn: Sunny spells', 'Aft: Sunny spells', 'Eve: Rain 7-8pm']
+  );
   assert.equal(weather.gardenSummary.windSummary, 'Breezy');
   assert.equal(weather.gardenSummary.wateringSummary, 'No watering needed');
   assert.deepEqual(weather.sunnyPeriods, ['morning', 'afternoon']);
@@ -79,8 +84,8 @@ test('normalizes weather into compact display and PDF lines', () => {
 
   assert.deepEqual(weatherPdfLines(weather), [
     'Christchurch weather',
-    'Today: Partly cloudy, 18/11 C, rain evening, sun 04:50-21:18, moon Waning crescent',
-    'Fri 12 Jun: Light rain, 17/10 C, rain morning, sun 04:50-21:19, moon Waning crescent',
+    'Today: Rain 7-8pm, dry otherwise, 18/11 C, rain evening, sun 04:50-21:18, moon Waning crescent',
+    'Fri 12 Jun: Rain 6-7am, dry otherwise, 17/10 C, rain morning, sun 04:50-21:19, moon Waning crescent',
     'Sat 13 Jun: Clear sky, 20/12 C, rain none expected, sun 04:49-21:19, moon New moon',
     'Sun 14 Jun: Overcast, 16/8 C, rain none expected, sun 04:49-21:20, moon New moon'
   ]);
@@ -96,7 +101,8 @@ test('normalizes wttr.in fallback weather into the same display model', () => {
   assert.equal(weather.icon, 'cloud');
   assert.equal(weather.temperatureLabel, 'High 18 C / Low 11 C');
   assert.equal(weather.precipitationProbabilityMax, 65);
-  assert.equal(weather.gardenSummary.rainSummary, 'Showers possible after tea');
+  assert.equal(weather.gardenSummary.rainSummary, 'Showers 6-7pm');
+  assert.equal(weather.headline, 'Showers 6-7pm, dry otherwise');
   assert.deepEqual(weather.sunnyPeriods, ['morning']);
   assert.deepEqual(weather.rainyPeriods, ['evening']);
   assert.equal(weather.sunLabel, 'Sunrise 04:47 / Sunset 21:20');

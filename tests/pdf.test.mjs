@@ -88,13 +88,14 @@ test('builds an A4 Sudoku PDF with predictable filename', () => {
   assert.match(text, /Partly cloudy/);
   assert.match(text, /High 18 \/ Low 11/);
   assert.match(text, /Rain likely evening/);
-  assert.match(text, /Sunrise 04:50 Sunset 21:18/);
+  assert.match(text, /Daylight/);
+  assert.match(text, /04:50-21:18/);
   assert.match(text, /Fri/);
   assert.match(text, /Rain likely morning/);
   assert.doesNotMatch(text, /Weather: Open-Meteo/);
   assert.doesNotMatch(text, /Tonight on TV 19:00-23:00/);
   assert.doesNotMatch(text, /TV: Freely/);
-  assert.match(text, /Tonight on TV, 7-11pm/);
+  assert.match(text, /Tonight on TV - 7-11pm/);
   assert.match(text, /BBC One/);
   assert.match(text, /EastEnders/);
   assert.match(text, /\(8\.00\) Tj/);
@@ -171,7 +172,7 @@ test('lays out TV listings as five fitted PDF columns', () => {
   assert.ok(layout.channelFontSize > 0);
   assert.deepEqual(
     layout.columns.map((column) => column.heading),
-    ['BBC One', 'BBC Two', 'ITV1', 'Channel 4', '5']
+    ['BBC One', 'BBC Two', 'ITV1', 'Channel 4', 'Channel 5']
   );
   assert.match(layout.columns[0].entries.flatMap((entry) => entry.lines).join(' '), /EastEnders/);
 });
@@ -202,9 +203,11 @@ test('lays out TV listings as readable channel bands', () => {
   assert.equal(layout.rows.length, 5);
   assert.deepEqual(
     layout.rows.map((row) => row.heading),
-    ['BBC One', 'BBC Two', 'ITV1', 'Channel 4', '5']
+    ['BBC One', 'BBC Two', 'ITV1', 'Channel 4', 'Channel 5']
   );
-  assert.match(layout.rows[0].lines.flatMap((line) => line.segments.map((segment) => segment.text)).join(' '), /On now/);
+  const rowText = layout.rows[0].lines.flatMap((line) => line.segments.map((segment) => segment.text)).join(' ');
+  assert.match(rowText, /6\.30/);
+  assert.doesNotMatch(rowText, /On now/);
   assert.ok(layout.rows[0].programmeWidth > 430);
 });
 

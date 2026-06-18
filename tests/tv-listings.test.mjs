@@ -43,15 +43,15 @@ test('includes programmes that overlap the evening window', () => {
   const guide = sampleFreelyGuide();
   guide.data.programs.find((channel) => channel.service_id === '37184').events.unshift({
     main_title: 'Gardeners World',
-    start_time: '2026-06-11T16:30:00+0000',
-    duration: 'PT2H30M'
+    start_time: '2026-06-11T17:30:00+0000',
+    duration: 'PT2H'
   });
 
   const listings = normalizeFreelyTvGuide(guide, { dateIso: '2026-06-11' });
   const bbcTwo = listings.channels.find((channel) => channel.serviceId === '37184');
 
   assert.deepEqual(bbcTwo.programs[0], {
-    startTime: '17:30',
+    startTime: '18:30',
     title: 'Gardeners World',
     startedBeforeWindow: true
   });

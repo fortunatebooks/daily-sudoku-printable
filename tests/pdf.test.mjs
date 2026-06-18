@@ -267,8 +267,63 @@ test('builds the embedded-font server PDF without omitting TV listings', async (
   );
   assert.equal(firstRow.programmes.some((programme) => programme.time === 'On now'), false);
   assert.equal(firstRow.programmes.some((programme) => /\+\d+ later/.test(programme.renderedTitle)), false);
-  assert.equal(firstRow.programmes.some((programme) => programme.truncated), true);
+  assert.equal(firstRow.programmes.some((programme) => programme.truncated), false);
   assert.ok(firstRow.minFontSize >= 8.5);
+});
+
+test('server TV layout uses spare line width before truncating programme titles', async () => {
+  const puzzle = generateDailySudoku('2026-06-19');
+  const layoutDebug = { tvRows: [] };
+
+  await buildNodeSudokuPdfBytes(puzzle, puzzle.date, {
+    layoutDebug,
+    weather: {
+      days: [
+        {
+          dateIso: '2026-06-19',
+          icon: 'cloud',
+          label: 'Cloudy',
+          highC: 18,
+          lowC: 10
+        }
+      ]
+    },
+    tvListings: {
+      channels: [
+        { name: 'BBC One South', programs: [] },
+        { name: 'BBC Two', programs: [] },
+        { name: 'ITV1', programs: [] },
+        {
+          name: 'Channel 4',
+          programs: [
+            { startTime: '19:00', title: 'Channel 4 News' },
+            { startTime: '20:00', title: "George Clarke's Beautiful Builds" },
+            { startTime: '21:00', title: '24 Hours in Police Custody' },
+            { startTime: '22:00', title: 'The Accused: Beyond Reasonable Doubt' }
+          ]
+        },
+        {
+          name: '5',
+          programs: [
+            { startTime: '19:00', title: 'New: Build Your Dream Home in the Country' },
+            { startTime: '20:00', title: 'Cornwall: A Year by the Sea' },
+            { startTime: '21:00', title: 'New: The Hardacres' },
+            { startTime: '22:00', title: 'Soham: The Murder of Holly & Jessica' }
+          ]
+        }
+      ]
+    }
+  });
+
+  const channel4 = layoutDebug.tvRows[3];
+  const channel5 = layoutDebug.tvRows[4];
+  const channel4Ten = channel4.programmes.find((programme) => programme.time === '10:00');
+  const channel5Ten = channel5.programmes.find((programme) => programme.time === '10:00');
+
+  assert.equal(channel4Ten.renderedTitle, 'The Accused: Beyond Reasonable Doubt');
+  assert.equal(channel4Ten.truncated, false);
+  assert.equal(channel5Ten.renderedTitle, 'Soham: The Murder of Holly & Jessica');
+  assert.equal(channel5Ten.truncated, false);
 });
 
 test('collapses dense TV channel bands to a later-count marker', () => {

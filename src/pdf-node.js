@@ -434,11 +434,17 @@ function drawTvPanel(doc, tvListings, box, options = {}) {
 
 function layoutTvProgramLines(doc, programmes, metrics) {
   const candidates = [
-    { titleSize: 9.5, timeSize: 9.2, lineHeight: 12.2, titleMax: 160 },
-    { titleSize: 9.2, timeSize: 9.0, lineHeight: 11.6, titleMax: 120 },
-    { titleSize: 8.8, timeSize: 8.8, lineHeight: 10.8, titleMax: 90 },
-    { titleSize: 8.5, timeSize: 8.5, lineHeight: 10.2, titleMax: 70 },
-    { titleSize: 8.5, timeSize: 8.5, lineHeight: 10.0, titleMax: 48 },
+    { titleSize: 9.5, timeSize: 9.2, lineHeight: 12.2 },
+    { titleSize: 9.2, timeSize: 9.0, lineHeight: 11.6 },
+    { titleSize: 8.8, timeSize: 8.8, lineHeight: 10.8 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 10.2 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 10.0, titleMax: 260 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 10.0, titleMax: 220 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 10.0, titleMax: 180 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 10.0, titleMax: 140 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 9.8, titleMax: 100 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 9.8, titleMax: 70 },
+    { titleSize: 8.5, timeSize: 8.5, lineHeight: 9.8, titleMax: 48 },
     { titleSize: 8.5, timeSize: 8.5, lineHeight: 9.8, titleMax: 28 }
   ];
 
@@ -498,12 +504,14 @@ function tryLayoutTvProgramLines(doc, programmes, metrics, style, options = {}) 
 function buildTvChunk(doc, programme, rowWidth, style) {
   const time = tvProgrammeTimeLabel(programme);
   const originalTitle = cleanPdfText(programme?.title || 'Untitled');
-  const maxTitleWidth = Math.max(8, Math.min(style.titleMax, rowWidth - textWidth(doc, time, FONTS.sansBold, style.timeSize) - 16));
-  const fittedTitle = truncateToWidth(doc, originalTitle, FONTS.sans, style.titleSize, maxTitleWidth);
   const timeWidth = textWidth(doc, time, FONTS.sansBold, style.timeSize);
-  const titleWidth = textWidth(doc, fittedTitle.text, FONTS.sans, style.titleSize);
-  const spaceWidth = time && fittedTitle.text ? 4 : 0;
+  const spaceWidth = time && originalTitle ? 4 : 0;
   const gap = 10;
+  const availableTitleWidth = Math.max(8, rowWidth - timeWidth - spaceWidth - gap);
+  const configuredTitleWidth = Number.isFinite(style.titleMax) ? style.titleMax : availableTitleWidth;
+  const maxTitleWidth = Math.max(8, Math.min(configuredTitleWidth, availableTitleWidth));
+  const fittedTitle = truncateToWidth(doc, originalTitle, FONTS.sans, style.titleSize, maxTitleWidth);
+  const titleWidth = textWidth(doc, fittedTitle.text, FONTS.sans, style.titleSize);
 
   return {
     time,

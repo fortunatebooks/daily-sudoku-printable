@@ -168,10 +168,7 @@ async function sendPdf(response, url, loaders) {
     ...securityHeaders,
     'content-type': 'application/pdf',
     'content-disposition': `${disposition}; filename="${filename}"`,
-    'cache-control':
-      url.pathname === '/pdf/today'
-        ? 'no-store'
-        : 'public, max-age=31536000, immutable',
+    'cache-control': 'no-store',
     'content-length': String(bytes.byteLength)
   });
   response.end(bytes);

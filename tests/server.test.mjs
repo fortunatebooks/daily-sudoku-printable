@@ -22,7 +22,7 @@ test('server returns PDFs for automation-friendly routes', async () => {
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-type'), 'application/pdf');
     assert.match(response.headers.get('content-disposition'), /filename="sudoku-2026-06-11\.pdf"/);
-    assert.equal(response.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(response.headers.get('cache-control'), 'no-store');
     assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
     assert.equal(text, '%PDF-1.3');
   } finally {

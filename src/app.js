@@ -725,7 +725,12 @@ async function fetchServerPdfBlob(dateIso) {
     return null;
   }
 
-  const response = await fetch(`/pdf/${dateIso}?download=1`, {
+  const params = new URLSearchParams({
+    download: '1',
+    cacheBust: String(Date.now())
+  });
+  const response = await fetch(`/pdf/${dateIso}?${params.toString()}`, {
+    cache: 'no-store',
     headers: {
       accept: 'application/pdf'
     }

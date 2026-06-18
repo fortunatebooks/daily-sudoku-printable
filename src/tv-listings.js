@@ -7,7 +7,6 @@ const DEFAULT_TIMEOUT_MS = 5000;
 const TV_TIME_ZONE = 'Europe/London';
 const TV_WINDOW_START_HOUR = 19;
 const TV_WINDOW_END_HOUR = 23;
-const DISPLAY_ELLIPSIS_MIN_LENGTH = 45;
 
 const TV_CHANNELS = [
   { serviceId: '37123', name: 'BBC One South' },
@@ -360,15 +359,10 @@ function parseDurationMs(value) {
 }
 
 function cleanTitle(value) {
-  const title = decodeHtmlEntities(String(value || '').replace(/<[^>]*>/g, ' '))
+  return decodeHtmlEntities(String(value || '').replace(/<[^>]*>/g, ' '))
+    .replace(/…/g, '...')
     .replace(/\s+/g, ' ')
     .trim();
-
-  if (title.length <= DISPLAY_ELLIPSIS_MIN_LENGTH) {
-    return title.replace(/\s*(?:\.{3}|…)$/, '').trim();
-  }
-
-  return title;
 }
 
 function decodeHtmlEntities(value) {

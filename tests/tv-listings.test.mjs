@@ -135,7 +135,7 @@ test('formats visible TV listing times as 12-hour labels without pm', () => {
   assert.equal(formatTvDisplayTime('00:30'), '12:30');
 });
 
-test('removes feed-provided ellipsis from short programme titles', () => {
+test('preserves feed-provided ellipsis in shortened programme titles', () => {
   const guide = sampleFreelyGuide();
   guide.data.programs.find((channel) => channel.service_id === '37123').events.push({
     main_title: 'New: Build Your Dream Home in...',
@@ -146,7 +146,7 @@ test('removes feed-provided ellipsis from short programme titles', () => {
   const listings = normalizeFreelyTvGuide(guide, { dateIso: '2026-06-11' });
   const title = listings.channels[0].programs.find((program) => program.startTime === '21:30')?.title;
 
-  assert.equal(title, 'New: Build Your Dream Home in');
+  assert.equal(title, 'New: Build Your Dream Home in...');
 });
 
 function sampleFreelyGuide() {

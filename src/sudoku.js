@@ -1,7 +1,10 @@
 export const LONDON_TIME_ZONE = 'Europe/London';
 export const HARD_PUZZLE_START_DATE = '2026-06-18';
 export const MEDIUM_DIFFICULTY = 'medium';
-export const HARD_DIFFICULTY = 'hard';
+export const VERY_DIFFICULT_DIFFICULTY = 'Very Difficult';
+export const FIENDISH_DIFFICULTY = 'Fiendish';
+export const SUPER_FIENDISH_DIFFICULTY = 'Super Fiendish';
+export const HARD_DIFFICULTY = FIENDISH_DIFFICULTY;
 export const MEDIUM_TARGET_CLUES = 34;
 export const HARD_TARGET_CLUES = 28;
 export const DIFFICULTY = MEDIUM_DIFFICULTY;
@@ -13,11 +16,37 @@ const BOX_SIZE = 3;
 const FULL_MASK = 0x1ff;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const ROUTE_PATTERN = /^\/(?:puzzle|print|pdf)\/([^/]+)$/;
+const MAX_GRADED_ATTEMPTS = 260;
+const TECHNIQUE_WEIGHTS = new Map([
+  ['naked-single', 1],
+  ['hidden-single', 2],
+  ['locked-candidate', 10],
+  ['naked-pair', 14],
+  ['hidden-pair', 16],
+  ['naked-triple', 24],
+  ['hidden-triple', 28],
+  ['x-wing', 38],
+  ['unsolved-without-guessing', 52]
+]);
+const TECHNIQUE_LABELS = new Map([
+  ['naked-single', 'Naked single'],
+  ['hidden-single', 'Hidden single'],
+  ['locked-candidate', 'Locked candidate'],
+  ['naked-pair', 'Naked pair'],
+  ['hidden-pair', 'Hidden pair'],
+  ['naked-triple', 'Naked triple'],
+  ['hidden-triple', 'Hidden triple'],
+  ['x-wing', 'X-Wing'],
+  ['unsolved-without-guessing', 'Guessing required']
+]);
 
 const DIGIT_BY_BIT = new Map();
 for (let digit = 1; digit <= GRID_SIZE; digit += 1) {
   DIGIT_BY_BIT.set(1 << (digit - 1), digit);
 }
+
+const UNITS = buildUnits();
+const PEERS = buildPeers();
 
 function assertValidDateString(dateString) {
   if (typeof dateString !== 'string' || !DATE_PATTERN.test(dateString)) {
@@ -119,6 +148,52 @@ function createSolvedGrid(seedInput) {
 
 function boxIndex(row, column) {
   return Math.floor(row / BOX_SIZE) * BOX_SIZE + Math.floor(column / BOX_SIZE);
+}
+
+function buildUnits() {
+  const units = [];
+
+  for (let row = 0; row < GRID_SIZE; row += 1) {
+    units.push(Array.from({ length: GRID_SIZE }, (_, column) => row * GRID_SIZE + column));
+  }
+
+  for (let column = 0; column < GRID_SIZE; column += 1) {
+    units.push(Array.from({ length: GRID_SIZE }, (_, row) => row * GRID_SIZE + column));
+  }
+
+  for (let boxRow = 0; boxRow < BOX_SIZE; boxRow += 1) {
+    for (let boxColumn = 0; boxColumn < BOX_SIZE; boxColumn += 1) {
+      units.push(
+        Array.from({ length: GRID_SIZE }, (_, index) => {
+          const row = boxRow * BOX_SIZE + Math.floor(index / BOX_SIZE);
+          const column = boxColumn * BOX_SIZE + (index % BOX_SIZE);
+          return row * GRID_SIZE + column;
+        })
+      );
+    }
+  }
+
+  return units;
+}
+
+function buildPeers() {
+  return Array.from({ length: CELL_COUNT }, (_, index) => {
+    const peers = new Set();
+
+    for (const unit of UNITS) {
+      if (!unit.includes(index)) {
+        continue;
+      }
+
+      unit.forEach((peer) => {
+        if (peer !== index) {
+          peers.add(peer);
+        }
+      });
+    }
+
+    return peers;
+  });
 }
 
 function parseGrid(grid) {
@@ -288,6 +363,503 @@ export function puzzleMatchesSolution(puzzle, solution) {
   return puzzleCells.every((cell, index) => cell === 0 || cell === solutionCells[index]);
 }
 
+export function gradeSudokuPuzzle(grid) {
+  const state = createHumanSolveState(grid);
+  const steps = [];
+
+  if (!state) {
+    return buildGrade({ steps, solved: false, invalid: true });
+  }
+
+  while (!state.invalid && !isSolvedState(state) && steps.length < 500) {
+    const step =
+      applyNakedSingle(state) ||
+      applyHiddenSingle(state) ||
+      applyLockedCandidate(state) ||
+      applyNakedSubset(state, 2) ||
+      applyHiddenSubset(state, 2) ||
+      applyNakedSubset(state, 3) ||
+      applyHiddenSubset(state, 3) ||
+      applyXWing(state);
+
+    if (!step) {
+      break;
+    }
+
+    steps.push(step);
+  }
+
+  if (!state.invalid && !isSolvedState(state)) {
+    steps.push({
+      technique: 'unsolved-without-guessing',
+      changed: 0
+    });
+  }
+
+  return buildGrade({
+    steps,
+    solved: !state.invalid && isSolvedState(state),
+    invalid: state.invalid
+  });
+}
+
+function createHumanSolveState(grid) {
+  const cells = parseGrid(grid);
+  const masks = buildMasks(cells);
+
+  if (!masks) {
+    return null;
+  }
+
+  const candidates = cells.map((cell, index) =>
+    cell === 0 ? candidateMask(index, masks.rows, masks.columns, masks.boxes) : 0
+  );
+
+  if (candidates.some((mask, index) => cells[index] === 0 && mask === 0)) {
+    return null;
+  }
+
+  return {
+    cells,
+    candidates,
+    invalid: false
+  };
+}
+
+function isSolvedState(state) {
+  return state.cells.every(Boolean);
+}
+
+function setHumanCell(state, index, digit) {
+  if (state.cells[index] === digit) {
+    return true;
+  }
+
+  if (state.cells[index] !== 0 || !(state.candidates[index] & bitForDigit(digit))) {
+    state.invalid = true;
+    return false;
+  }
+
+  const row = Math.floor(index / GRID_SIZE);
+  const column = index % GRID_SIZE;
+  const box = boxIndex(row, column);
+
+  state.cells[index] = digit;
+  state.candidates[index] = 0;
+
+  for (const peer of PEERS[index]) {
+    if (state.cells[peer] === digit) {
+      state.invalid = true;
+      return false;
+    }
+
+    eliminateCandidates(state, peer, bitForDigit(digit));
+  }
+
+  for (let peer = 0; peer < CELL_COUNT; peer += 1) {
+    if (peer === index || state.cells[peer] === 0) {
+      continue;
+    }
+
+    const peerRow = Math.floor(peer / GRID_SIZE);
+    const peerColumn = peer % GRID_SIZE;
+    if (peerRow === row || peerColumn === column || boxIndex(peerRow, peerColumn) === box) {
+      continue;
+    }
+  }
+
+  return !state.invalid;
+}
+
+function eliminateCandidates(state, index, mask) {
+  if (state.cells[index] !== 0 || state.invalid) {
+    return 0;
+  }
+
+  const previous = state.candidates[index];
+  const next = previous & ~mask;
+
+  if (next === previous) {
+    return 0;
+  }
+
+  state.candidates[index] = next;
+
+  if (next === 0) {
+    state.invalid = true;
+  }
+
+  return bitCount(previous ^ next);
+}
+
+function bitForDigit(digit) {
+  return 1 << (digit - 1);
+}
+
+function digitsForMask(mask) {
+  const digits = [];
+  let value = mask;
+
+  while (value) {
+    const bit = value & -value;
+    digits.push(DIGIT_BY_BIT.get(bit));
+    value &= value - 1;
+  }
+
+  return digits;
+}
+
+function applyNakedSingle(state) {
+  for (let index = 0; index < CELL_COUNT; index += 1) {
+    if (state.cells[index] !== 0 || bitCount(state.candidates[index]) !== 1) {
+      continue;
+    }
+
+    const digit = DIGIT_BY_BIT.get(state.candidates[index]);
+    setHumanCell(state, index, digit);
+    return {
+      technique: 'naked-single',
+      placements: [{ index, digit }],
+      changed: 1
+    };
+  }
+
+  return null;
+}
+
+function applyHiddenSingle(state) {
+  for (const unit of UNITS) {
+    for (let digit = 1; digit <= GRID_SIZE; digit += 1) {
+      const bit = bitForDigit(digit);
+      const positions = unit.filter((index) => state.cells[index] === 0 && (state.candidates[index] & bit));
+
+      if (positions.length === 1) {
+        setHumanCell(state, positions[0], digit);
+        return {
+          technique: 'hidden-single',
+          placements: [{ index: positions[0], digit }],
+          changed: 1
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function applyLockedCandidate(state) {
+  for (let box = 0; box < GRID_SIZE; box += 1) {
+    const unit = boxUnit(box);
+
+    for (let digit = 1; digit <= GRID_SIZE; digit += 1) {
+      const bit = bitForDigit(digit);
+      const positions = unit.filter((index) => state.cells[index] === 0 && (state.candidates[index] & bit));
+
+      if (positions.length < 2) {
+        continue;
+      }
+
+      const rows = uniqueValues(positions.map((index) => Math.floor(index / GRID_SIZE)));
+      const columns = uniqueValues(positions.map((index) => index % GRID_SIZE));
+
+      if (rows.length === 1) {
+        const changed = eliminateFromIndexes(
+          state,
+          rowUnit(rows[0]).filter((index) => !unit.includes(index)),
+          bit
+        );
+        if (changed > 0) {
+          return { technique: 'locked-candidate', digit, changed };
+        }
+      }
+
+      if (columns.length === 1) {
+        const changed = eliminateFromIndexes(
+          state,
+          columnUnit(columns[0]).filter((index) => !unit.includes(index)),
+          bit
+        );
+        if (changed > 0) {
+          return { technique: 'locked-candidate', digit, changed };
+        }
+      }
+    }
+  }
+
+  for (let unitIndex = 0; unitIndex < GRID_SIZE * 2; unitIndex += 1) {
+    const unit = UNITS[unitIndex];
+
+    for (let digit = 1; digit <= GRID_SIZE; digit += 1) {
+      const bit = bitForDigit(digit);
+      const positions = unit.filter((index) => state.cells[index] === 0 && (state.candidates[index] & bit));
+
+      if (positions.length < 2) {
+        continue;
+      }
+
+      const boxes = uniqueValues(
+        positions.map((index) => boxIndex(Math.floor(index / GRID_SIZE), index % GRID_SIZE))
+      );
+
+      if (boxes.length === 1) {
+        const changed = eliminateFromIndexes(
+          state,
+          boxUnit(boxes[0]).filter((index) => !unit.includes(index)),
+          bit
+        );
+        if (changed > 0) {
+          return { technique: 'locked-candidate', digit, changed };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function applyNakedSubset(state, size) {
+  for (const unit of UNITS) {
+    const cells = unit.filter((index) => {
+      const count = bitCount(state.candidates[index]);
+      return state.cells[index] === 0 && count >= 2 && count <= size;
+    });
+
+    for (const indexes of combinations(cells, size)) {
+      const unionMask = indexes.reduce((mask, index) => mask | state.candidates[index], 0);
+
+      if (bitCount(unionMask) !== size) {
+        continue;
+      }
+
+      const changed = eliminateFromIndexes(
+        state,
+        unit.filter((index) => !indexes.includes(index)),
+        unionMask
+      );
+
+      if (changed > 0) {
+        return {
+          technique: size === 2 ? 'naked-pair' : 'naked-triple',
+          changed
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function applyHiddenSubset(state, size) {
+  const digits = Array.from({ length: GRID_SIZE }, (_, index) => index + 1);
+
+  for (const unit of UNITS) {
+    for (const subset of combinations(digits, size)) {
+      const digitMask = subset.reduce((mask, digit) => mask | bitForDigit(digit), 0);
+      const digitPositions = subset.map((digit) =>
+        unit.filter((index) => state.cells[index] === 0 && (state.candidates[index] & bitForDigit(digit)))
+      );
+
+      if (digitPositions.some((positions) => positions.length === 0)) {
+        continue;
+      }
+
+      const uniquePositions = [...new Set(digitPositions.flat())];
+
+      if (uniquePositions.length !== size) {
+        continue;
+      }
+
+      const changed = uniquePositions.reduce((total, index) => {
+        const removable = state.candidates[index] & ~digitMask;
+        return total + eliminateCandidates(state, index, removable);
+      }, 0);
+
+      if (changed > 0) {
+        return {
+          technique: size === 2 ? 'hidden-pair' : 'hidden-triple',
+          changed
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function applyXWing(state) {
+  for (let digit = 1; digit <= GRID_SIZE; digit += 1) {
+    const bit = bitForDigit(digit);
+    const rowPatterns = [];
+
+    for (let row = 0; row < GRID_SIZE; row += 1) {
+      const columns = rowUnit(row)
+        .filter((index) => state.cells[index] === 0 && (state.candidates[index] & bit))
+        .map((index) => index % GRID_SIZE);
+      if (columns.length === 2) {
+        rowPatterns.push({ row, columns });
+      }
+    }
+
+    for (const pair of combinations(rowPatterns, 2)) {
+      if (pair[0].columns.join(',') !== pair[1].columns.join(',')) {
+        continue;
+      }
+
+      const changed = eliminateFromIndexes(
+        state,
+        pair[0].columns.flatMap((column) =>
+          columnUnit(column).filter((index) => {
+            const row = Math.floor(index / GRID_SIZE);
+            return row !== pair[0].row && row !== pair[1].row;
+          })
+        ),
+        bit
+      );
+
+      if (changed > 0) {
+        return { technique: 'x-wing', digit, changed };
+      }
+    }
+
+    const columnPatterns = [];
+
+    for (let column = 0; column < GRID_SIZE; column += 1) {
+      const rows = columnUnit(column)
+        .filter((index) => state.cells[index] === 0 && (state.candidates[index] & bit))
+        .map((index) => Math.floor(index / GRID_SIZE));
+      if (rows.length === 2) {
+        columnPatterns.push({ column, rows });
+      }
+    }
+
+    for (const pair of combinations(columnPatterns, 2)) {
+      if (pair[0].rows.join(',') !== pair[1].rows.join(',')) {
+        continue;
+      }
+
+      const changed = eliminateFromIndexes(
+        state,
+        pair[0].rows.flatMap((row) =>
+          rowUnit(row).filter((index) => {
+            const column = index % GRID_SIZE;
+            return column !== pair[0].column && column !== pair[1].column;
+          })
+        ),
+        bit
+      );
+
+      if (changed > 0) {
+        return { technique: 'x-wing', digit, changed };
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildGrade(result) {
+  const steps = result.steps || [];
+  const techniqueCounts = {};
+  let score = 0;
+  let hardestTechnique = '';
+  let hardestWeight = 0;
+  let nonSingleSteps = 0;
+
+  for (const step of steps) {
+    const weight = TECHNIQUE_WEIGHTS.get(step.technique) || 0;
+    techniqueCounts[step.technique] = (techniqueCounts[step.technique] || 0) + 1;
+    score += weight;
+
+    if (weight > hardestWeight) {
+      hardestWeight = weight;
+      hardestTechnique = step.technique;
+    }
+
+    if (step.technique !== 'naked-single' && step.technique !== 'hidden-single') {
+      nonSingleSteps += 1;
+    }
+  }
+
+  const solvedWithoutGuessing = result.solved && hardestTechnique !== 'unsolved-without-guessing';
+  const singlesOnly = solvedWithoutGuessing && nonSingleSteps === 0;
+  const label = gradeLabelFor({ hardestTechnique, hardestWeight, nonSingleSteps, score, singlesOnly, solvedWithoutGuessing });
+
+  return {
+    invalid: Boolean(result.invalid),
+    label,
+    score,
+    solvedWithoutGuessing,
+    singlesOnly,
+    hardestTechnique,
+    hardestTechniqueLabel: TECHNIQUE_LABELS.get(hardestTechnique) || '',
+    hardestWeight,
+    nonSingleSteps,
+    stepCount: steps.length,
+    techniqueCounts,
+    steps
+  };
+}
+
+function gradeLabelFor(metrics) {
+  if (metrics.singlesOnly) {
+    return 'Too Easy';
+  }
+
+  if (!metrics.solvedWithoutGuessing || metrics.hardestTechnique === 'x-wing' || metrics.hardestWeight >= 24 || metrics.score >= 170) {
+    return SUPER_FIENDISH_DIFFICULTY;
+  }
+
+  if (metrics.hardestWeight >= 14 || metrics.nonSingleSteps >= 3 || metrics.score >= 95) {
+    return FIENDISH_DIFFICULTY;
+  }
+
+  if (metrics.hardestWeight >= 10 || metrics.nonSingleSteps >= 1 || metrics.score >= 65) {
+    return VERY_DIFFICULT_DIFFICULTY;
+  }
+
+  return 'Too Easy';
+}
+
+function eliminateFromIndexes(state, indexes, mask) {
+  return indexes.reduce((total, index) => total + eliminateCandidates(state, index, mask), 0);
+}
+
+function uniqueValues(values) {
+  return [...new Set(values)];
+}
+
+function rowUnit(row) {
+  return UNITS[row];
+}
+
+function columnUnit(column) {
+  return UNITS[GRID_SIZE + column];
+}
+
+function boxUnit(box) {
+  return UNITS[GRID_SIZE * 2 + box];
+}
+
+function combinations(values, size) {
+  const result = [];
+
+  function visit(start, current) {
+    if (current.length === size) {
+      result.push([...current]);
+      return;
+    }
+
+    for (let index = start; index <= values.length - (size - current.length); index += 1) {
+      current.push(values[index]);
+      visit(index + 1, current);
+      current.pop();
+    }
+  }
+
+  visit(0, []);
+  return result;
+}
+
 function makePuzzle(solution, seedInput, targetClues) {
   const random = seededRandom(seedInput);
   const cells = solution.split('');
@@ -315,19 +887,68 @@ function makePuzzle(solution, seedInput, targetClues) {
   return cells.join('');
 }
 
-export function puzzleSettingsForDate(dateString) {
+export function puzzleTargetsForDate(dateString) {
   assertValidDateString(dateString);
 
-  if (dateString >= HARD_PUZZLE_START_DATE) {
-    return {
-      difficulty: HARD_DIFFICULTY,
-      targetClues: HARD_TARGET_CLUES
-    };
+  if (dateString < HARD_PUZZLE_START_DATE) {
+    return [
+      {
+        id: 'medium',
+        label: MEDIUM_DIFFICULTY,
+        targetClues: MEDIUM_TARGET_CLUES,
+        clueTargets: [MEDIUM_TARGET_CLUES],
+        minScore: 0,
+        minHardestWeight: 0
+      }
+    ];
   }
 
+  if (isWeekendDate(dateString)) {
+    return [fiendishTarget(), superFiendishTarget()];
+  }
+
+  return [veryDifficultTarget(), fiendishTarget()];
+}
+
+export function puzzleSettingsForDate(dateString) {
+  const target = puzzleTargetsForDate(dateString)[0];
+
   return {
-    difficulty: MEDIUM_DIFFICULTY,
-    targetClues: MEDIUM_TARGET_CLUES
+    difficulty: target.label,
+    targetClues: target.targetClues
+  };
+}
+
+function veryDifficultTarget() {
+  return {
+    id: 'very-difficult',
+    label: VERY_DIFFICULT_DIFFICULTY,
+    targetClues: 28,
+    clueTargets: [28, 27, 29, 30],
+    minScore: 62,
+    minHardestWeight: 10
+  };
+}
+
+function fiendishTarget() {
+  return {
+    id: 'fiendish',
+    label: FIENDISH_DIFFICULTY,
+    targetClues: 27,
+    clueTargets: [27, 26, 28, 25],
+    minScore: 88,
+    minHardestWeight: 14
+  };
+}
+
+function superFiendishTarget() {
+  return {
+    id: 'super-fiendish',
+    label: SUPER_FIENDISH_DIFFICULTY,
+    targetClues: 26,
+    clueTargets: [26, 25, 24, 27, 28],
+    minScore: 130,
+    minHardestWeight: 24
   };
 }
 
@@ -352,16 +973,109 @@ function buildPuzzleForDate(dateString, targetClues) {
   return { puzzle: best.puzzle, solution: best.solution };
 }
 
+function buildGradedPuzzleForTarget(dateString, target, number) {
+  let best = null;
+
+  for (let attempt = 0; attempt < MAX_GRADED_ATTEMPTS; attempt += 1) {
+    const targetClues = target.clueTargets[attempt % target.clueTargets.length];
+    const seedInput = `daily-sudoku:${dateString}:${target.id}:${attempt}`;
+    const solution = createSolvedGrid(`${seedInput}:solution`);
+    const puzzle = makePuzzle(solution, `${seedInput}:puzzle`, targetClues);
+    const clues = clueCount(puzzle);
+    const grade = gradeSudokuPuzzle(puzzle);
+    const candidate = {
+      number,
+      label: target.label,
+      requestedLabel: target.label,
+      puzzle,
+      solution,
+      clueCount: clues,
+      grade,
+      fallback: false
+    };
+
+    if (candidateMatchesTarget(candidate, target)) {
+      return candidate;
+    }
+
+    if (!best || candidateRank(candidate, target) > candidateRank(best, target)) {
+      best = candidate;
+    }
+  }
+
+  return {
+    ...best,
+    label: fallbackLabelFor(best.grade, target),
+    fallback: fallbackLabelFor(best.grade, target) !== target.label
+  };
+}
+
+function candidateMatchesTarget(candidate, target) {
+  const grade = candidate.grade;
+
+  if (target.id === 'medium') {
+    return candidate.clueCount === target.targetClues && countSolutions(candidate.puzzle, 2) === 1;
+  }
+
+  if (grade.invalid || grade.singlesOnly || countSolutions(candidate.puzzle, 2) !== 1) {
+    return false;
+  }
+
+  if (target.id === 'super-fiendish' && !grade.solvedWithoutGuessing) {
+    return true;
+  }
+
+  return grade.solvedWithoutGuessing && grade.score >= target.minScore && grade.hardestWeight >= target.minHardestWeight;
+}
+
+function candidateRank(candidate, target) {
+  const grade = candidate.grade;
+  const cluePenalty = Math.abs(candidate.clueCount - target.targetClues) * 3;
+  const unsolvedBonus = target.id === 'super-fiendish' && !grade.solvedWithoutGuessing && !grade.singlesOnly ? 70 : 0;
+  const singlesPenalty = grade.singlesOnly ? 120 : 0;
+
+  return grade.score + grade.hardestWeight * 6 + grade.nonSingleSteps * 10 + unsolvedBonus - cluePenalty - singlesPenalty;
+}
+
+function fallbackLabelFor(grade, target) {
+  if (target.id === 'super-fiendish' && grade?.label !== SUPER_FIENDISH_DIFFICULTY) {
+    return grade?.label || FIENDISH_DIFFICULTY;
+  }
+
+  return target.label;
+}
+
+function isWeekendDate(dateString) {
+  const [year, month, day] = dateString.split('-').map(Number);
+  const weekday = new Date(Date.UTC(year, month - 1, day, 12)).getUTCDay();
+  return weekday === 0 || weekday === 6;
+}
+
 export function generateSudokuForDate(dateString = todayInLondon()) {
   assertValidDateString(dateString);
-  const settings = puzzleSettingsForDate(dateString);
-  const { puzzle, solution } = buildPuzzleForDate(dateString, settings.targetClues);
+  const targets = puzzleTargetsForDate(dateString);
+  const puzzles =
+    targets.length === 1 && targets[0].id === 'medium'
+      ? [
+          {
+            number: 1,
+            label: targets[0].label,
+            requestedLabel: targets[0].label,
+            ...buildPuzzleForDate(dateString, targets[0].targetClues),
+            clueCount: targets[0].targetClues,
+            grade: null,
+            fallback: false
+          }
+        ]
+      : targets.map((target, index) => buildGradedPuzzleForTarget(dateString, target, index + 1));
+  const primary = puzzles[0];
 
   return {
     date: dateString,
-    difficulty: settings.difficulty,
-    puzzle,
-    solution,
+    difficulty: primary.label,
+    puzzle: primary.puzzle,
+    solution: primary.solution,
+    puzzles,
     created_at: `${dateString}T00:00:00.000Z`
   };
 }

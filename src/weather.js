@@ -13,11 +13,28 @@ const WEATHER_DAILY_FIELDS = [
   'weather_code',
   'temperature_2m_max',
   'temperature_2m_min',
+  'apparent_temperature_max',
+  'precipitation_sum',
+  'precipitation_hours',
+  'precipitation_probability_max',
+  'sunshine_duration',
+  'wind_speed_10m_max',
+  'wind_gusts_10m_max',
+  'uv_index_max',
+  'et0_fao_evapotranspiration',
   'sunrise',
   'sunset'
 ];
 
-const WEATHER_HOURLY_FIELDS = ['weather_code', 'precipitation_probability', 'precipitation'];
+const WEATHER_HOURLY_FIELDS = [
+  'weather_code',
+  'temperature_2m',
+  'precipitation_probability',
+  'precipitation',
+  'wind_speed_10m',
+  'wind_gusts_10m',
+  'is_day'
+];
 
 const PERIODS = [
   { name: 'morning', startHour: 6, endHour: 12 },
@@ -73,6 +90,7 @@ export function buildWeatherUrl() {
     daily: WEATHER_DAILY_FIELDS.join(','),
     hourly: WEATHER_HOURLY_FIELDS.join(','),
     forecast_days: '4',
+    wind_speed_unit: 'mph',
     timezone: 'Europe/London'
   });
 
@@ -307,16 +325,23 @@ export function selectWeatherDay(weather, dateIso) {
 }
 
 export function selectWeatherForecast(weather, dateIso) {
+  const sourceDays = Array.isArray(weather?.days) ? weather.days : [];
   const selectedDay = selectWeatherDay(weather, dateIso);
 
   if (!selectedDay) {
     return null;
   }
 
+  const selectedIndex = Math.max(
+    0,
+    sourceDays.findIndex((day) => day.dateIso === selectedDay.dateIso)
+  );
+  const displayDays = sourceDays.length > 0 ? sourceDays.slice(selectedIndex, selectedIndex + 4) : [selectedDay];
+
   return {
     locationLabel: weather.locationLabel || 'Christchurch, England',
     attribution: weather.attribution || 'Weather: Open-Meteo',
-    days: Array.isArray(weather.days) ? weather.days : [selectedDay],
+    days: displayDays.length > 0 ? displayDays : [selectedDay],
     selectedDateIso: selectedDay.dateIso,
     ...selectedDay
   };
@@ -438,6 +463,15 @@ function normalizeWeatherDay({ daily, hourly, index, dateIso }) {
   const periods = summarizePeriods(hourly, dateIso);
   const highC = numberOrNull(daily.temperature_2m_max?.[index]);
   const lowC = numberOrNull(daily.temperature_2m_min?.[index]);
+  const apparentHighC = numberOrNull(daily.apparent_temperature_max?.[index]);
+  const precipitationSumMm = numberOrNull(daily.precipitation_sum?.[index]);
+  const precipitationHours = numberOrNull(daily.precipitation_hours?.[index]);
+  const precipitationProbabilityMax = numberOrNull(daily.precipitation_probability_max?.[index]);
+  const sunshineHours = secondsToHours(numberOrNull(daily.sunshine_duration?.[index]));
+  const windSpeedMph = numberOrNull(daily.wind_speed_10m_max?.[index]);
+  const windGustMph = numberOrNull(daily.wind_gusts_10m_max?.[index]);
+  const uvIndexMax = numberOrNull(daily.uv_index_max?.[index]);
+  const evapotranspirationMm = numberOrNull(daily.et0_fao_evapotranspiration?.[index]);
   const sunrise = formatLocalTime(daily.sunrise?.[index]);
   const sunset = formatLocalTime(daily.sunset?.[index]);
   const label = weatherCodeLabel(code);
@@ -451,6 +485,15 @@ function normalizeWeatherDay({ daily, hourly, index, dateIso }) {
     weatherCode: code,
     highC,
     lowC,
+    apparentHighC,
+    precipitationSumMm,
+    precipitationHours,
+    precipitationProbabilityMax,
+    sunshineHours,
+    windSpeedMph,
+    windGustMph,
+    uvIndexMax,
+    evapotranspirationMm,
     temperatureLabel: `High ${formatTemperature(highC)} / Low ${formatTemperature(lowC)}`,
     sunnyPeriods: periods.sunny,
     rainyPeriods: periods.rainy,
@@ -462,6 +505,7 @@ function normalizeWeatherDay({ daily, hourly, index, dateIso }) {
     moonPhase,
     moonLabel: `Moon: ${moonPhase}`
   };
+  day.gardenSummary = gardenSummaryForDay(day);
 
   return day;
 }
@@ -479,6 +523,11 @@ function normalizeWttrDay(sourceDay) {
   const periods = summarizeWttrPeriods(hourly);
   const highC = numberOrNull(sourceDay.maxtempC) ?? maxNumber(hourly.map((hour) => hour.tempC));
   const lowC = numberOrNull(sourceDay.mintempC) ?? minNumber(hourly.map((hour) => hour.tempC));
+  const precipitationSumMm = sumNumbers(hourly.map((hour) => hour.precipMM));
+  const precipitationProbabilityMax = maxNumber(hourly.map((hour) => hour.chanceofrain));
+  const sunshineHours = estimateWttrSunshineHours(hourly);
+  const windSpeedMph = kmhToMph(maxNumber(hourly.map((hour) => hour.windspeedKmph ?? hour.WindSpeedKmph)));
+  const windGustMph = kmhToMph(maxNumber(hourly.map((hour) => hour.WindGustKmph ?? hour.windgustKmph)));
   const astronomy = Array.isArray(sourceDay.astronomy) ? sourceDay.astronomy[0] || {} : {};
   const sunrise = formatClockTime(astronomy.sunrise);
   const sunset = formatClockTime(astronomy.sunset);
@@ -492,6 +541,11 @@ function normalizeWttrDay(sourceDay) {
     weatherCode: numberOrNull(representativeHour.weatherCode),
     highC,
     lowC,
+    precipitationSumMm,
+    precipitationProbabilityMax,
+    sunshineHours,
+    windSpeedMph,
+    windGustMph,
     temperatureLabel: `High ${formatTemperature(highC)} / Low ${formatTemperature(lowC)}`,
     sunnyPeriods: periods.sunny,
     rainyPeriods: periods.rainy,
@@ -503,6 +557,7 @@ function normalizeWttrDay(sourceDay) {
     moonPhase,
     moonLabel: `Moon: ${moonPhase}`
   };
+  day.gardenSummary = gardenSummaryForDay(day);
 
   return day;
 }
@@ -589,6 +644,117 @@ function isRainyWttrHour(hour) {
   const text = cleanWeatherText(hour?.weatherDesc?.[0]?.value).toLowerCase();
 
   return rainChance >= 40 || precipitation >= 0.2 || /rain|drizzle|shower|sleet|thunder/.test(text);
+}
+
+function gardenSummaryForDay(day) {
+  const windSummary = gardenWindLabel(day.windGustMph ?? day.windSpeedMph);
+  const sunSummary = gardenSunLabel(day.sunshineHours);
+  const rainSummary = gardenRainLabel(day.precipitationProbabilityMax, day.precipitationSumMm, day.rainyPeriods);
+  const frostSummary = day.lowC != null && day.lowC <= 2 ? 'Frost risk overnight' : 'No frost risk';
+  const wateringSummary = gardenWateringLabel({
+    highC: day.highC,
+    precipitationProbabilityMax: day.precipitationProbabilityMax,
+    precipitationSumMm: day.precipitationSumMm,
+    sunshineHours: day.sunshineHours,
+    windSummary
+  });
+
+  return {
+    rainSummary,
+    windSummary,
+    sunSummary,
+    frostSummary,
+    wateringSummary,
+    bestGardenTime: gardenBestTime({ rainSummary, windSummary })
+  };
+}
+
+function gardenRainLabel(probabilityMax, precipitationSum, rainyPeriods) {
+  if (precipitationSum != null && precipitationSum >= 8) {
+    return 'Wet day';
+  }
+
+  if (probabilityMax != null && probabilityMax >= 70) {
+    return `Rain likely ${periodText(rainyPeriods)}`;
+  }
+
+  if (probabilityMax != null && probabilityMax >= 40) {
+    return `Showers possible ${periodText(rainyPeriods)}`;
+  }
+
+  if (precipitationSum != null && precipitationSum >= 1) {
+    return 'A little rain possible';
+  }
+
+  return 'Mostly dry';
+}
+
+function gardenWindLabel(maxGustMph) {
+  if (maxGustMph == null) {
+    return 'Light wind';
+  }
+
+  if (maxGustMph >= 35) {
+    return 'Very windy - secure pots';
+  }
+
+  if (maxGustMph >= 25) {
+    return 'Windy';
+  }
+
+  if (maxGustMph >= 16) {
+    return 'Breezy';
+  }
+
+  return 'Light wind';
+}
+
+function gardenSunLabel(sunshineHours) {
+  if (sunshineHours == null) {
+    return 'Sunshine variable';
+  }
+
+  return `About ${Math.round(sunshineHours)} hours of sun`;
+}
+
+function gardenWateringLabel({ precipitationSumMm, precipitationProbabilityMax, highC, sunshineHours, windSummary }) {
+  if ((precipitationSumMm != null && precipitationSumMm >= 3) || (precipitationProbabilityMax != null && precipitationProbabilityMax >= 70)) {
+    return 'No watering needed';
+  }
+
+  if ((highC != null && highC >= 24) || (sunshineHours != null && sunshineHours >= 6) || /windy/i.test(windSummary || '')) {
+    return 'Check pots this evening';
+  }
+
+  if (precipitationProbabilityMax != null && precipitationProbabilityMax < 30) {
+    return 'Water pots if soil is dry';
+  }
+
+  return 'Probably no need to water';
+}
+
+function gardenBestTime({ rainSummary, windSummary }) {
+  if (/wet|rain likely|showers possible/i.test(rainSummary || '')) {
+    return 'Best garden time: morning';
+  }
+
+  if (/windy/i.test(windSummary || '')) {
+    return 'Best garden time: sheltered spots';
+  }
+
+  return 'Best garden time: morning';
+}
+
+function periodText(periods) {
+  if (!Array.isArray(periods) || periods.length === 0) {
+    return 'today';
+  }
+
+  if (periods.includes('evening')) {
+    return 'after tea';
+  }
+
+  return periods.join(', ');
 }
 
 function formatPeriods(label, periods) {
@@ -693,6 +859,14 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function secondsToHours(value) {
+  return value == null ? null : value / 3600;
+}
+
+function kmhToMph(value) {
+  return value == null ? null : value * 0.621371;
+}
+
 function maxNumber(values) {
   const numbers = values.map(numberOrNull).filter((value) => value != null);
   return numbers.length > 0 ? Math.max(...numbers) : null;
@@ -701,6 +875,16 @@ function maxNumber(values) {
 function minNumber(values) {
   const numbers = values.map(numberOrNull).filter((value) => value != null);
   return numbers.length > 0 ? Math.min(...numbers) : null;
+}
+
+function sumNumbers(values) {
+  const numbers = values.map(numberOrNull).filter((value) => value != null);
+  return numbers.length > 0 ? numbers.reduce((total, value) => total + value, 0) : null;
+}
+
+function estimateWttrSunshineHours(hourly) {
+  const sunnyHours = hourly.filter((hour) => isSunnyWttrHour(hour)).length;
+  return sunnyHours > 0 ? sunnyHours * 3 : null;
 }
 
 function cleanWeatherText(value) {

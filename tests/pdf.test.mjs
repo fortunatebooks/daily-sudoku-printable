@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildSudokuPdfBytes, layoutTvListingsForPdf, sudokuPdfFilename } from '../src/pdf.js';
+import {
+  buildSudokuPdfBytes,
+  layoutTvChannelBandsForPdf,
+  layoutTvListingsForPdf,
+  sudokuPdfFilename
+} from '../src/pdf.js';
 import { generateDailySudoku } from '../src/sudoku.js';
 
 test('builds an A4 Sudoku PDF with predictable filename', () => {
@@ -67,33 +72,78 @@ test('builds an A4 Sudoku PDF with predictable filename', () => {
   assert.equal(sudokuPdfFilename(puzzle.date), 'sudoku-2026-06-11.pdf');
   assert.match(text, /^%PDF-1\.4/);
   assert.match(text, /\/MediaBox \[0 0 595\.28 841\.89\]/);
-  assert.match(text, / 795\.89 Tm \(Jenny's Sudoku\) Tj ET/);
-  assert.match(text, / 772\.89 Tm \(Thursday, 11 June 2026\) Tj ET/);
-  assert.match(text, /2\.4 w 97\.64 350 m 97\.64 750 l S/);
-  assert.match(text, /0\.6 w 34 34 m 561\.28 34 l S/);
+  assert.match(text, / 795 Tm \(Jenny's Sudoku\) Tj ET/);
+  assert.match(text, / 768 Tm \(Thursday, 11 June 2026\) Tj ET/);
+  assert.match(text, /Puzzle 1/);
+  assert.match(text, /medium/);
+  assert.match(text, /Weather for the garden/);
+  assert.match(text, /1\.9 w 36 524 m 36 728 l S/);
+  assert.match(text, /0\.6 w 32 30 m 563 30 l S/);
+  assert.match(text, /0\.6 w 32 282 m 563 282 l S/);
   assert.match(text, /Jenny's Sudoku/);
   assert.match(text, /Thursday, 11 June 2026/);
   assert.doesNotMatch(text, /Christchurch Weather/);
   assert.doesNotMatch(text, /Christchurch weather/);
-  assert.match(text, /Today/);
+  assert.match(text, /TODAY/);
   assert.match(text, /Partly cloudy/);
-  assert.match(text, /18\/11 C Rain evening/);
-  assert.match(text, /Sun 04:50-21:18 Moon Waning crescent/);
-  assert.match(text, /Fri 12 Jun/);
-  assert.match(text, /Light rain/);
+  assert.match(text, /High 18 \/ Low 11/);
+  assert.match(text, /Rain likely evening/);
+  assert.match(text, /Sunrise 04:50 Sunset 21:18/);
+  assert.match(text, /Fri/);
+  assert.match(text, /Rain likely morning/);
   assert.doesNotMatch(text, /Weather: Open-Meteo/);
   assert.doesNotMatch(text, /Tonight on TV 19:00-23:00/);
   assert.doesNotMatch(text, /TV: Freely/);
+  assert.match(text, /Tonight on TV, 7-11pm/);
   assert.match(text, /BBC One/);
   assert.match(text, /EastEnders/);
-  assert.match(text, /\(8:00\) Tj/);
-  assert.match(text, /Sort Your/);
-  assert.match(text, /Life Out/);
+  assert.match(text, /\(8\.00\) Tj/);
+  assert.match(text, /Sort Your Life Out/);
   assert.match(text, /BBC Two/);
   assert.match(text, /Springwatch/);
   assert.doesNotMatch(text, /Notes:/);
   assert.doesNotMatch(text, /Finished in:/);
   assert.doesNotMatch(text, /Difficulty:/);
+});
+
+test('builds the two-puzzle graded print layout for current puzzles', () => {
+  const puzzle = generateDailySudoku('2026-06-19');
+  const bytes = buildSudokuPdfBytes(puzzle, puzzle.date, {
+    weather: {
+      days: [
+        {
+          dateIso: '2026-06-19',
+          icon: 'sun',
+          label: 'Sunny',
+          highC: 20,
+          lowC: 12,
+          rainyPeriodsLabel: 'Rain likely: none expected',
+          sunrise: '04:49',
+          sunset: '21:19'
+        }
+      ]
+    },
+    tvListings: {
+      channels: [
+        { name: 'BBC One South', programs: [{ startTime: '19:00', title: 'EastEnders' }] },
+        { name: 'BBC Two', programs: [] },
+        { name: 'ITV1', programs: [] },
+        { name: 'Channel 4', programs: [] },
+        { name: '5', programs: [] }
+      ]
+    }
+  });
+  const text = new TextDecoder('ascii').decode(bytes);
+
+  assert.match(text, /Puzzle 1/);
+  assert.match(text, /Very Difficult/);
+  assert.match(text, /Puzzle 2/);
+  assert.match(text, /Fiendish/);
+  assert.match(text, /Weather for the garden/);
+  assert.match(text, /1\.9 w 36 524 m 36 728 l S/);
+  assert.match(text, /1\.9 w 36 296 m 36 500 l S/);
+  assert.match(text, /0\.6 w 32 30 m 563 30 l S/);
+  assert.match(text, /0\.6 w 32 282 m 563 282 l S/);
 });
 
 test('lays out TV listings as five fitted PDF columns', () => {
@@ -117,13 +167,69 @@ test('lays out TV listings as five fitted PDF columns', () => {
   );
 
   assert.equal(layout.columns.length, 5);
-  assert.ok(layout.programmeFontSize >= 7.2);
+  assert.ok(layout.programmeFontSize >= 8.5);
   assert.ok(layout.channelFontSize > 0);
   assert.deepEqual(
     layout.columns.map((column) => column.heading),
     ['BBC One', 'BBC Two', 'ITV1', 'Channel 4', '5']
   );
   assert.match(layout.columns[0].entries.flatMap((entry) => entry.lines).join(' '), /EastEnders/);
+});
+
+test('lays out TV listings as readable channel bands', () => {
+  const layout = layoutTvChannelBandsForPdf(
+    {
+      channels: [
+        {
+          name: 'BBC One South',
+          programs: [
+            { startTime: '18:30', startedBeforeWindow: true, title: 'Antiques Road Trip' },
+            { startTime: '19:30', title: 'EastEnders' },
+            { startTime: '20:00', title: 'The Repair Shop' },
+            { startTime: '21:00', title: 'Silent Witness' }
+          ]
+        },
+        { name: 'BBC Two', programs: [{ startTime: '19:00', title: 'Gardeners World' }] },
+        { name: 'ITV1', programs: [] },
+        { name: 'Channel 4', programs: [] },
+        { name: '5', programs: [] }
+      ]
+    },
+    { x: 32, y: 30, width: 531, height: 252 }
+  );
+
+  assert.equal(layout.mode, 'channelBands');
+  assert.equal(layout.rows.length, 5);
+  assert.deepEqual(
+    layout.rows.map((row) => row.heading),
+    ['BBC One', 'BBC Two', 'ITV1', 'Channel 4', '5']
+  );
+  assert.match(layout.rows[0].lines.flatMap((line) => line.segments.map((segment) => segment.text)).join(' '), /On now/);
+  assert.ok(layout.rows[0].programmeWidth > 430);
+});
+
+test('collapses dense TV channel bands to a later-count marker', () => {
+  const programs = Array.from({ length: 12 }, (_, index) => ({
+    startTime: `${String(19 + Math.floor(index / 3)).padStart(2, '0')}:${String((index % 3) * 20).padStart(2, '0')}`,
+    title: `Long Programme Title ${index + 1}`
+  }));
+  const layout = layoutTvChannelBandsForPdf(
+    {
+      channels: [
+        { name: 'BBC One South', programs },
+        { name: 'BBC Two', programs: [] },
+        { name: 'ITV1', programs: [] },
+        { name: 'Channel 4', programs: [] },
+        { name: '5', programs: [] }
+      ]
+    },
+    { x: 32, y: 30, width: 531, height: 252 }
+  );
+  const rowText = layout.rows[0].lines.flatMap((line) => line.segments.map((segment) => segment.text)).join(' ');
+
+  assert.match(rowText, /\+\d+ later/);
+  assert.doesNotMatch(rowText, /\b\d{1,2}\.\d{2}\s+\+\d+ later/);
+  assert.equal(layout.rows[0].overflowCount > 0, true);
 });
 
 test('does not ellipsize programme entries of 45 characters or fewer', () => {

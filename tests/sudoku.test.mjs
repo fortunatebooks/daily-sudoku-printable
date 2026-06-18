@@ -2,21 +2,29 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  FIENDISH_DIFFICULTY,
   HARD_TARGET_CLUES,
   MEDIUM_TARGET_CLUES,
+  SUPER_FIENDISH_DIFFICULTY,
   TARGET_CLUES,
+  VERY_DIFFICULT_DIFFICULTY,
   clueCount,
   countSolutions,
   dateForRoute,
   formatDateInLondon,
   generateDailySudoku,
+  gradeSudokuPuzzle,
   isSupportedRoute,
   isValidSolution,
   previousDate,
+  puzzleTargetsForDate,
   puzzleSettingsForDate,
   puzzleMatchesSolution,
   todayInLondon
 } from '../src/sudoku.js';
+
+const TOO_EASY_BASELINE_PUZZLE =
+  '579000800000008000801005036000009020003006180004870000302600000000020008008007390';
 
 test('generates the same puzzle and solution for the same date', () => {
   const first = generateDailySudoku('2026-06-11');
@@ -57,16 +65,54 @@ test('generates hard puzzles from 18 June 2026', () => {
     targetClues: MEDIUM_TARGET_CLUES
   });
   assert.deepEqual(puzzleSettingsForDate('2026-06-18'), {
-    difficulty: 'hard',
+    difficulty: VERY_DIFFICULT_DIFFICULTY,
     targetClues: HARD_TARGET_CLUES
   });
   assert.equal(beforeChange.difficulty, 'medium');
   assert.equal(clueCount(beforeChange.puzzle), MEDIUM_TARGET_CLUES);
-  assert.equal(firstHard.difficulty, 'hard');
+  assert.equal(firstHard.difficulty, VERY_DIFFICULT_DIFFICULTY);
   assert.equal(clueCount(firstHard.puzzle), HARD_TARGET_CLUES);
   assert.equal(isValidSolution(firstHard.solution), true);
   assert.equal(puzzleMatchesSolution(firstHard.puzzle, firstHard.solution), true);
   assert.equal(countSolutions(firstHard.puzzle, 2), 1);
+});
+
+test('generates two graded puzzles on weekdays and harder pairs on weekends', () => {
+  const weekday = generateDailySudoku('2026-06-19');
+  const weekend = generateDailySudoku('2026-06-20');
+
+  assert.deepEqual(
+    puzzleTargetsForDate('2026-06-19').map((target) => target.label),
+    [VERY_DIFFICULT_DIFFICULTY, FIENDISH_DIFFICULTY]
+  );
+  assert.deepEqual(
+    puzzleTargetsForDate('2026-06-20').map((target) => target.label),
+    [FIENDISH_DIFFICULTY, SUPER_FIENDISH_DIFFICULTY]
+  );
+  assert.deepEqual(
+    weekday.puzzles.map((puzzle) => puzzle.label),
+    [VERY_DIFFICULT_DIFFICULTY, FIENDISH_DIFFICULTY]
+  );
+  assert.deepEqual(
+    weekend.puzzles.map((puzzle) => puzzle.label),
+    [FIENDISH_DIFFICULTY, SUPER_FIENDISH_DIFFICULTY]
+  );
+
+  for (const puzzle of [...weekday.puzzles, ...weekend.puzzles]) {
+    assert.equal(puzzle.puzzle.length, 81);
+    assert.equal(puzzle.solution.length, 81);
+    assert.equal(countSolutions(puzzle.puzzle, 2), 1);
+    assert.equal(puzzle.grade.singlesOnly, false);
+    assert.equal(puzzle.grade.score > 0, true);
+  }
+});
+
+test('grades the old 28-clue baseline as too easy', () => {
+  const grade = gradeSudokuPuzzle(TOO_EASY_BASELINE_PUZZLE);
+
+  assert.equal(grade.label, 'Too Easy');
+  assert.equal(grade.singlesOnly, true);
+  assert.equal(grade.solvedWithoutGuessing, true);
 });
 
 test('generated puzzle has a unique solution', () => {

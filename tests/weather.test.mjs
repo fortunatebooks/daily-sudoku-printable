@@ -27,9 +27,13 @@ test('builds the fixed Christchurch Open-Meteo forecast URL', () => {
   assert.equal(url.searchParams.get('longitude'), '-1.78129');
   assert.equal(url.searchParams.get('forecast_days'), '4');
   assert.equal(url.searchParams.get('timezone'), 'Europe/London');
+  assert.equal(url.searchParams.get('wind_speed_unit'), 'mph');
   assert.match(url.searchParams.get('daily'), /weather_code/);
+  assert.match(url.searchParams.get('daily'), /precipitation_probability_max/);
+  assert.match(url.searchParams.get('daily'), /wind_gusts_10m_max/);
   assert.match(url.searchParams.get('daily'), /sunrise/);
   assert.match(url.searchParams.get('hourly'), /precipitation_probability/);
+  assert.match(url.searchParams.get('hourly'), /wind_gusts_10m/);
 });
 
 test('builds the fixed Christchurch wttr.in fallback URL', () => {
@@ -61,6 +65,13 @@ test('normalizes weather into compact display and PDF lines', () => {
   assert.equal(weather.label, 'Partly cloudy');
   assert.equal(weather.icon, 'cloud');
   assert.equal(weather.temperatureLabel, 'High 18 C / Low 11 C');
+  assert.equal(weather.precipitationProbabilityMax, 72);
+  assert.equal(weather.precipitationSumMm, 1.4);
+  assert.equal(Math.round(weather.sunshineHours), 5);
+  assert.equal(weather.windGustMph, 18);
+  assert.equal(weather.gardenSummary.rainSummary, 'Rain likely after tea');
+  assert.equal(weather.gardenSummary.windSummary, 'Breezy');
+  assert.equal(weather.gardenSummary.wateringSummary, 'No watering needed');
   assert.deepEqual(weather.sunnyPeriods, ['morning', 'afternoon']);
   assert.deepEqual(weather.rainyPeriods, ['evening']);
   assert.equal(weather.sunLabel, 'Sunrise 04:50 / Sunset 21:18');
@@ -84,11 +95,23 @@ test('normalizes wttr.in fallback weather into the same display model', () => {
   assert.equal(weather.label, 'Partly cloudy');
   assert.equal(weather.icon, 'cloud');
   assert.equal(weather.temperatureLabel, 'High 18 C / Low 11 C');
+  assert.equal(weather.precipitationProbabilityMax, 65);
+  assert.equal(weather.gardenSummary.rainSummary, 'Showers possible after tea');
   assert.deepEqual(weather.sunnyPeriods, ['morning']);
   assert.deepEqual(weather.rainyPeriods, ['evening']);
   assert.equal(weather.sunLabel, 'Sunrise 04:47 / Sunset 21:20');
   assert.equal(weather.moonLabel, 'Moon: Waning Crescent');
   assert.equal(weatherPdfLines(weather)[0], 'Christchurch weather');
+});
+
+test('selects requested forecast date as the first display day', () => {
+  const weather = normalizeOpenMeteoWeather(sampleOpenMeteo(), { dateIso: '2026-06-13' });
+
+  assert.equal(weather.dateIso, '2026-06-13');
+  assert.equal(weather.days[0].dateIso, '2026-06-13');
+  assert.equal(weather.days[0].label, 'Clear sky');
+  assert.equal(weather.days.length, 2);
+  assert.match(weatherPdfLines(weather)[1], /Today: Clear sky/);
 });
 
 test('computes basic local moon phases deterministically', () => {
@@ -213,6 +236,15 @@ function sampleOpenMeteo() {
       weather_code: [2, 61, 0, 3],
       temperature_2m_max: [18.4, 17.2, 19.6, 16.1],
       temperature_2m_min: [10.6, 9.8, 12.1, 8.4],
+      apparent_temperature_max: [17.8, 16.8, 19.1, 15.4],
+      precipitation_sum: [1.4, 3.2, 0, 0],
+      precipitation_hours: [2, 4, 0, 0],
+      precipitation_probability_max: [72, 84, 20, 25],
+      sunshine_duration: [18000, 7200, 25200, 3600],
+      wind_speed_10m_max: [12, 14, 8, 10],
+      wind_gusts_10m_max: [18, 24, 12, 15],
+      uv_index_max: [4.1, 3.2, 5.4, 2.1],
+      et0_fao_evapotranspiration: [2.8, 1.9, 3.4, 1.2],
       sunrise: [
         '2026-06-11T04:50',
         '2026-06-12T04:50',

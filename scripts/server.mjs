@@ -91,6 +91,7 @@ async function sendPuzzleJson(response, pathname) {
     difficulty: puzzle.difficulty,
     puzzle: puzzle.puzzle,
     solution: puzzle.solution,
+    puzzles: puzzle.puzzles,
     created_at: puzzle.created_at
   });
 }

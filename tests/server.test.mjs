@@ -71,10 +71,12 @@ test('server exposes puzzle JSON and health checks', async () => {
     const baseUrl = `http://127.0.0.1:${server.address().port}`;
     const healthResponse = await fetch(`${baseUrl}/health`);
     const puzzleResponse = await fetch(`${baseUrl}/api/puzzle/2026-06-11`);
+    const gradedPuzzleResponse = await fetch(`${baseUrl}/api/puzzle/2026-06-19`);
     const weatherResponse = await fetch(`${baseUrl}/api/weather/2026-06-11`);
     const tvListingsResponse = await fetch(`${baseUrl}/api/tv-listings/2026-06-11`);
     const health = await healthResponse.json();
     const puzzle = await puzzleResponse.json();
+    const gradedPuzzle = await gradedPuzzleResponse.json();
     const weather = await weatherResponse.json();
     const tvListings = await tvListingsResponse.json();
 
@@ -89,6 +91,14 @@ test('server exposes puzzle JSON and health checks', async () => {
     assert.equal(puzzle.date, '2026-06-11');
     assert.equal(puzzle.puzzle.length, 81);
     assert.equal(puzzle.solution.length, 81);
+    assert.equal(Array.isArray(puzzle.puzzles), true);
+    assert.equal(puzzle.puzzles.length, 1);
+    assert.equal(gradedPuzzleResponse.status, 200);
+    assert.equal(gradedPuzzle.puzzles.length, 2);
+    assert.deepEqual(
+      gradedPuzzle.puzzles.map((entry) => entry.label),
+      ['Very Difficult', 'Fiendish']
+    );
     assert.equal(weather.label, 'Partly cloudy');
     assert.equal(weather.attribution, 'Weather: Open-Meteo');
     assert.equal(tvListings.dateIso, '2026-06-11');

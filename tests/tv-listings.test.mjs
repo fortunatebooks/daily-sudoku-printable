@@ -26,8 +26,7 @@ test('normalizes fixed Freely channels into the London evening window', () => {
   assert.deepEqual(bbcOne.programs, [
     { startTime: '19:00', title: 'EastEnders' },
     { startTime: '20:00', title: 'Sort Your Life Out' },
-    { startTime: '22:30', title: 'BBC South Today' },
-    { startTime: '23:00', title: 'Question Time' }
+    { startTime: '22:30', title: 'BBC South Today' }
   ]);
   assert.deepEqual(bbcTwo.programs, [
     { startTime: '19:55', title: 'The Secret Genius of Modern Life' }
@@ -38,6 +37,32 @@ test('builds the Freely URL with fixed personal-use nid and UTC day start', () =
   const url = buildFreelyTvGuideUrl('2026-06-11');
 
   assert.equal(url, 'https://www.freely.co.uk/api/tv-guide?nid=64865&start=1781136000');
+});
+
+test('includes programmes that overlap the evening window', () => {
+  const guide = sampleFreelyGuide();
+  guide.data.programs.find((channel) => channel.service_id === '37184').events.unshift({
+    main_title: 'Gardeners World',
+    start_time: '2026-06-11T16:30:00+0000',
+    duration: 'PT2H30M'
+  });
+
+  const listings = normalizeFreelyTvGuide(guide, { dateIso: '2026-06-11' });
+  const bbcTwo = listings.channels.find((channel) => channel.serviceId === '37184');
+
+  assert.deepEqual(bbcTwo.programs[0], {
+    startTime: '17:30',
+    title: 'Gardeners World',
+    startedBeforeWindow: true
+  });
+  assert.equal(bbcTwo.programs[1].title, 'The Secret Genius of Modern Life');
+});
+
+test('excludes programmes that start at the end of the evening window', () => {
+  const listings = normalizeFreelyTvGuide(sampleFreelyGuide(), { dateIso: '2026-06-11' });
+  const bbcOne = listings.channels.find((channel) => channel.serviceId === '37123');
+
+  assert.equal(bbcOne.programs.some((program) => program.startTime === '23:00'), false);
 });
 
 test('browser loader uses stale cache when the server TV route is unavailable', async () => {

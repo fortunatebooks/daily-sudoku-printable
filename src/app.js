@@ -644,14 +644,24 @@ async function createCurrentPdfBlob(overrides = undefined, statusMessage = 'Prep
       unavailableTvListings(dateIso),
     filename: sudokuPdfFilename(dateIso)
   };
-  const result = buildSudokuPdf(payload.puzzle, payload.dateIso, {
+  const result = buildSudokuPdf(
+    {
+      ...appState.puzzle,
+      displayDate: payload.displayDate,
+      title: payload.title,
+      weather: payload.weather,
+      tvListings: payload.tvListings
+    },
+    payload.dateIso,
+    {
     cells: payload.cells,
     displayDate: payload.displayDate,
     filename: payload.filename,
     title: payload.title,
     weather: payload.weather,
     tvListings: payload.tvListings
-  });
+    }
+  );
 
   return {
     blob: await pdfResultToBlob(result),

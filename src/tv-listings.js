@@ -171,11 +171,34 @@ export function normalizeFreelyTvGuide(source, options = {}) {
         : Array.isArray(sourceChannel?.programs)
           ? sourceChannel.programs
           : [];
-      const programs = events
+      const normalizedEvents = events
         .map((event) => normalizeFreelyEvent(event))
-        .filter((program) => program && program.startMs >= windowStartMs && program.startMs <= windowEndMs)
+        .filter(Boolean)
         .sort((left, right) => left.startMs - right.startMs)
-        .map(({ startMs, ...program }) => program);
+        .map((program, index, allPrograms) => {
+          const nextStartMs = allPrograms[index + 1]?.startMs;
+          const durationEndMs = program.durationMs ? program.startMs + program.durationMs : null;
+          let endMs = durationEndMs ?? nextStartMs ?? program.startMs + 60 * 60 * 1000;
+
+          if (nextStartMs && nextStartMs > program.startMs && durationEndMs && durationEndMs > nextStartMs) {
+            endMs = nextStartMs;
+          }
+
+          return {
+            ...program,
+            endMs
+          };
+        });
+      const programs = normalizedEvents
+        .filter((program) => program.startMs < windowEndMs && program.endMs > windowStartMs)
+        .map(({ startMs, endMs, durationMs, ...program }) =>
+          startMs < windowStartMs
+            ? {
+                ...program,
+                startedBeforeWindow: true
+              }
+            : program
+        );
 
       return {
         serviceId: fixedChannel.serviceId,
@@ -269,6 +292,7 @@ async function fetchServerTvListings(options = {}) {
 function normalizeFreelyEvent(event) {
   const title = cleanTitle(event?.main_title ?? event?.title ?? event?.name);
   const startMs = parseGuideTime(event?.start_time ?? event?.startTime ?? event?.start);
+  const durationMs = parseDurationMs(event?.duration ?? event?.durationMs);
 
   if (!title || startMs == null) {
     return null;
@@ -277,7 +301,8 @@ function normalizeFreelyEvent(event) {
   return {
     startMs,
     startTime: formatZonedTime(startMs),
-    title
+    title,
+    ...(durationMs ? { durationMs } : {})
   };
 }
 
@@ -304,6 +329,34 @@ function parseGuideTime(value) {
   const normalized = value.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
   const time = Date.parse(normalized);
   return Number.isFinite(time) ? time : null;
+}
+
+function parseDurationMs(value) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value < 10000 ? value * 1000 : value;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const isoMatch = trimmed.match(/^P(?:(\d+(?:\.\d+)?)D)?T?(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?$/i);
+  if (isoMatch) {
+    const [, days = '0', hours = '0', minutes = '0', seconds = '0'] = isoMatch;
+    const totalSeconds =
+      Number(days) * 86400 + Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
+    return totalSeconds > 0 ? totalSeconds * 1000 : null;
+  }
+
+  const clockMatch = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (clockMatch) {
+    const [, hours, minutes, seconds = '0'] = clockMatch;
+    const totalSeconds = Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds);
+    return totalSeconds > 0 ? totalSeconds * 1000 : null;
+  }
+
+  return null;
 }
 
 function cleanTitle(value) {

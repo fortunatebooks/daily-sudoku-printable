@@ -2,10 +2,10 @@
 
 Live site: <https://jennysudoku.com/>
 
-A small personal project that makes one printable Sudoku for each day.
+A small personal project that makes a printable Sudoku sheet for each day.
 
 It was built as a gift for my mum, who likes Sudoku and wanted something she
-could print every morning: a fresh puzzle, a little local weather, and the
+could print every morning: two fresh puzzles, a little local weather, and the
 evening TV listings on one A4 page. The intended use is deliberately simple:
 run the app on a small web host, then have `cron`, `launchd`, or another
 scheduler download `/pdf/today` and send it to the printer.
@@ -17,18 +17,24 @@ print layout.
 
 ## What It Does
 
-- Shows today's puzzle at `/`.
+- Shows today's puzzle sheet at `/`.
 - Shows date-specific puzzles at `/puzzle/YYYY-MM-DD`.
 - Provides print-friendly browser routes at `/print/today` and
   `/print/YYYY-MM-DD`.
 - Provides PDF routes at `/pdf/today` and `/pdf/YYYY-MM-DD`.
 - Provides a small history view at `/history`.
 - Uses the UK `Europe/London` calendar day for "today".
-- Generates the same valid Sudoku for the same date every time.
-- Adds Christchurch, Dorset weather using Open-Meteo first, wttr.in second,
-  and a stale cache as the last fallback.
+- Prints two deterministic, valid Sudoku puzzles for each date.
+- Uses a weekday schedule of Very Difficult plus Fiendish puzzles.
+- Uses a weekend schedule of Fiendish plus Super Fiendish puzzles.
+- Grades puzzles with a custom human-style grader based on solving techniques,
+  not just clue count.
+- Adds garden-friendly Christchurch, Dorset weather using Open-Meteo first,
+  wttr.in second, and a stale cache as the last fallback.
 - Adds evening TV listings from Freely for BBC One South, BBC Two, ITV1,
-  Channel 4, and 5.
+  Channel 4, and 5, laid out as readable channel bands.
+- Builds an ink-saving black-and-white A4 PDF with the puzzles on the left,
+  weather on the right, and a stable full-width TV guide section at the bottom.
 
 The app has no runtime npm dependencies. It is plain JavaScript, a tiny Node
 server, and a hand-built PDF writer.
@@ -36,10 +42,12 @@ server, and a hand-built PDF writer.
 ## Useful Files
 
 - `src/sudoku.js` handles date routing, deterministic puzzle generation,
-  validation helpers, clue counting, and uniqueness checks.
-- `src/pdf.js` builds the A4 PDF. It draws the grid, givens, title, date,
-  weather row, TV listings box, and includes text fitting/truncation so long
-  programme titles do not spill out of the printable area.
+  validation helpers, uniqueness checks, daily difficulty scheduling, and the
+  custom human-style grader.
+- `src/pdf.js` builds the ink-saving black-and-white A4 PDF. It draws the
+  puzzle grids, givens, title, date, right-side weather, TV listings box, and
+  includes text fitting/truncation so long programme titles do not spill out of
+  the printable area.
 - `src/weather.js` pulls weather from Open-Meteo, falls back to wttr.in, keeps
   fresh/stale cache windows, formats forecast lines, and calculates moon phase
   text for the printout.
@@ -133,9 +141,10 @@ That is the best route for scheduled downloads and automatic printing. In a
 static-only deployment, the browser can still generate PDF downloads, but there
 is no raw PDF response for automation.
 
-`/api/puzzle/...` includes both the puzzle and solution. The solution is not
-shown on the page or printout, but it is useful for validation, testing, and
-future solution/answer features.
+`/api/puzzle/...` includes backward-compatible top-level puzzle fields for the
+first puzzle, plus a `puzzles` array containing the full daily pair. Solutions
+are not shown on the page or printout, but they are useful for validation,
+testing, and future solution/answer features.
 
 ## Personalizing It
 
@@ -151,6 +160,7 @@ Good places to start changing things:
 
 - Change the title in `src/index.html`, `src/app.js`, and `scripts/server.mjs`.
 - Change weather coordinates and fallback URL in `src/weather.js`.
+- Change the daily difficulty schedule or grading rules in `src/sudoku.js`.
 - Change TV channels, Freely region id, listing window, or data source in
   `src/tv-listings.js`.
 - Change PDF sizing, spacing, or title treatment in `src/pdf.js`.
@@ -214,6 +224,9 @@ Static hosting is fine for manual use in a browser. For automatic printing,
 prefer the Node server because it returns raw PDF bytes from `/pdf/today`.
 
 ## Daily Printing
+
+Existing daily printing automation does not need to change. It downloads
+`/pdf/today`, and that route now returns the current two-puzzle PDF sheet.
 
 ### Download Today's PDF
 

@@ -1,7 +1,8 @@
 const OPEN_METEO_FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
-const WTTR_FORECAST_URL = 'https://wttr.in/Christchurch,Dorset';
-const CHRISTCHURCH_LATITUDE = 50.73583;
-const CHRISTCHURCH_LONGITUDE = -1.78129;
+const WEATHER_LOCATION_LABEL = 'Driftwood Park Weather Forecast';
+const WTTR_FORECAST_URL = 'https://wttr.in/BH23%202GA';
+const DRIFTWOOD_PARK_LATITUDE = 50.749271;
+const DRIFTWOOD_PARK_LONGITUDE = -1.798819;
 const WEATHER_CACHE_KEY = 'daily-sudoku-weather-v1';
 const FRESH_CACHE_MS = 3 * 60 * 60 * 1000;
 const STALE_CACHE_MS = 24 * 60 * 60 * 1000;
@@ -74,19 +75,20 @@ const WEATHER_LABELS = new Map([
 ]);
 
 export {
-  CHRISTCHURCH_LATITUDE,
-  CHRISTCHURCH_LONGITUDE,
+  DRIFTWOOD_PARK_LATITUDE,
+  DRIFTWOOD_PARK_LONGITUDE,
   FRESH_CACHE_MS,
   OPEN_METEO_FORECAST_URL,
   STALE_CACHE_MS,
+  WEATHER_LOCATION_LABEL,
   WEATHER_CACHE_KEY,
   WTTR_FORECAST_URL
 };
 
 export function buildWeatherUrl() {
   const params = new URLSearchParams({
-    latitude: String(CHRISTCHURCH_LATITUDE),
-    longitude: String(CHRISTCHURCH_LONGITUDE),
+    latitude: String(DRIFTWOOD_PARK_LATITUDE),
+    longitude: String(DRIFTWOOD_PARK_LONGITUDE),
     daily: WEATHER_DAILY_FIELDS.join(','),
     hourly: WEATHER_HOURLY_FIELDS.join(','),
     forecast_days: '4',
@@ -284,7 +286,7 @@ export function normalizeOpenMeteoWeather(source, options = {}) {
 
   const days = daily.time.map((dateIso, index) => normalizeWeatherDay({ daily, hourly, index, dateIso }));
   return selectWeatherForecast({
-    locationLabel: 'Christchurch, England',
+    locationLabel: WEATHER_LOCATION_LABEL,
     attribution: 'Weather: Open-Meteo',
     days
   }, options.dateIso);
@@ -304,7 +306,7 @@ export function normalizeWttrWeather(source, options = {}) {
   }
 
   return selectWeatherForecast({
-    locationLabel: 'Christchurch, England',
+    locationLabel: WEATHER_LOCATION_LABEL,
     attribution: 'Weather: wttr.in',
     days
   }, options.dateIso);
@@ -339,7 +341,7 @@ export function selectWeatherForecast(weather, dateIso) {
   const displayDays = sourceDays.length > 0 ? sourceDays.slice(selectedIndex, selectedIndex + 4) : [selectedDay];
 
   return {
-    locationLabel: weather.locationLabel || 'Christchurch, England',
+    locationLabel: weather.locationLabel || WEATHER_LOCATION_LABEL,
     attribution: weather.attribution || 'Weather: Open-Meteo',
     days: displayDays.length > 0 ? displayDays : [selectedDay],
     selectedDateIso: selectedDay.dateIso,
@@ -434,7 +436,7 @@ export function weatherPdfLines(weather) {
 
   if (Array.isArray(weather.days) && weather.days.length > 0) {
     return [
-      'Christchurch weather',
+      WEATHER_LOCATION_LABEL,
       ...weather.days.slice(0, 4).map((day, index) => {
         const label = index === 0 ? 'Today' : shortDayLabel(day.dateIso);
         const rainy = stripDetailPrefix(day.rainyPeriodsLabel);
@@ -451,7 +453,7 @@ export function weatherPdfLines(weather) {
   const sunMoonLine = [weather.sunLabel, weather.moonLabel].filter(Boolean).join('; ');
 
   return [
-    `${weather.locationLabel || 'Christchurch, England'}: ${weather.label || 'Weather forecast'}`,
+    `${weather.locationLabel || WEATHER_LOCATION_LABEL}: ${weather.label || 'Weather forecast'}`,
     weather.temperatureLabel,
     periodsLine,
     sunMoonLine
@@ -964,14 +966,14 @@ function gardenWateringLabel({ precipitationSumMm, precipitationProbabilityMax, 
 
 function gardenBestTime({ rainSummary, windSummary }) {
   if (/wet|rain likely|showers possible/i.test(rainSummary || '')) {
-    return 'Best garden time: morning';
+    return 'Best outside time: morning';
   }
 
   if (/windy/i.test(windSummary || '')) {
-    return 'Best garden time: sheltered spots';
+    return 'Best outside time: sheltered spots';
   }
 
-  return 'Best garden time: morning';
+  return 'Best outside time: morning';
 }
 
 function periodText(periods) {

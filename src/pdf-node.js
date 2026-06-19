@@ -258,7 +258,7 @@ function drawWeatherPanel(doc, weather, box) {
     .font(FONTS.serifBold)
     .fontSize(13.4)
     .fillColor('black')
-    .text('WEATHER FOR THE GARDEN', box.x, titleY - 1, {
+    .text('Driftwood Park Weather Forecast', box.x, titleY - 1, {
       width: box.width,
       height: 20
     });
@@ -353,7 +353,7 @@ function drawTodayWeather(doc, day, box) {
   drawLine(doc, box.x + 8, box.y + 84, box.x + box.width - 8, box.y + 84, 0.35);
   drawWeatherMetric(doc, 'Rain', summary.rainSummary, box.x + 8, box.y + 93, box.width - 16);
   drawWeatherMetric(doc, 'Wind', summary.windSummary, box.x + 8, box.y + 104, box.width - 16);
-  drawWeatherMetric(doc, 'Garden', summary.wateringSummary, box.x + 8, box.y + 115, box.width - 16);
+  drawWeatherMetric(doc, 'Outside', summary.wateringSummary, box.x + 8, box.y + 115, box.width - 16);
 
   if (daylight) {
     drawWeatherMetric(doc, 'Daylight', daylight, box.x + 8, box.y + 126, box.width - 16);

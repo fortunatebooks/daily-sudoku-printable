@@ -353,7 +353,7 @@ function renderWeather(weather) {
 
   const location = document.createElement('p');
   location.className = 'weather-location';
-  location.textContent = weather.locationLabel || 'Christchurch, England';
+  location.textContent = weather.locationLabel || 'Driftwood Park Weather Forecast';
 
   const label = document.createElement('p');
   label.className = 'weather-label';
@@ -685,7 +685,7 @@ async function createCurrentPdfBlob(overrides = undefined, statusMessage = 'Prep
       appState.weather ||
       getCachedWeather({ dateIso }) || {
         unavailable: true,
-        locationLabel: 'Christchurch, England',
+        locationLabel: 'Driftwood Park Weather Forecast',
         attribution: ''
       },
     tvListings:

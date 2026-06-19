@@ -19,12 +19,12 @@ import {
   weatherPdfLines
 } from '../src/weather.js';
 
-test('builds the fixed Christchurch Open-Meteo forecast URL', () => {
+test('builds the fixed Driftwood Park Open-Meteo forecast URL', () => {
   const url = new URL(buildWeatherUrl());
 
   assert.equal(url.origin + url.pathname, 'https://api.open-meteo.com/v1/forecast');
-  assert.equal(url.searchParams.get('latitude'), '50.73583');
-  assert.equal(url.searchParams.get('longitude'), '-1.78129');
+  assert.equal(url.searchParams.get('latitude'), '50.749271');
+  assert.equal(url.searchParams.get('longitude'), '-1.798819');
   assert.equal(url.searchParams.get('forecast_days'), '4');
   assert.equal(url.searchParams.get('timezone'), 'Europe/London');
   assert.equal(url.searchParams.get('wind_speed_unit'), 'mph');
@@ -36,10 +36,10 @@ test('builds the fixed Christchurch Open-Meteo forecast URL', () => {
   assert.match(url.searchParams.get('hourly'), /wind_gusts_10m/);
 });
 
-test('builds the fixed Christchurch wttr.in fallback URL', () => {
+test('builds the fixed Driftwood Park wttr.in fallback URL', () => {
   const url = new URL(buildWttrWeatherUrl());
 
-  assert.equal(url.origin + url.pathname, 'https://wttr.in/Christchurch,Dorset');
+  assert.equal(url.origin + url.pathname, 'https://wttr.in/BH23%202GA');
   assert.equal(url.searchParams.get('format'), 'j1');
 });
 
@@ -59,7 +59,7 @@ test('maps Open-Meteo weather codes to labels and monochrome icon names', () => 
 test('normalizes weather into compact display and PDF lines', () => {
   const weather = normalizeOpenMeteoWeather(sampleOpenMeteo(), { dateIso: '2026-06-11' });
 
-  assert.equal(weather.locationLabel, 'Christchurch, England');
+  assert.equal(weather.locationLabel, 'Driftwood Park Weather Forecast');
   assert.equal(weather.attribution, 'Weather: Open-Meteo');
   assert.equal(weather.dateIso, '2026-06-11');
   assert.equal(weather.label, 'Partly cloudy');
@@ -83,7 +83,7 @@ test('normalizes weather into compact display and PDF lines', () => {
   assert.equal(weather.moonLabel, 'Moon: Waning crescent');
 
   assert.deepEqual(weatherPdfLines(weather), [
-    'Christchurch weather',
+    'Driftwood Park Weather Forecast',
     'Today: Rain 7-8pm, dry otherwise, 18/11 C, rain evening, sun 04:50-21:18, moon Waning crescent',
     'Fri 12 Jun: Rain 6-7am, dry otherwise, 17/10 C, rain morning, sun 04:50-21:19, moon Waning crescent',
     'Sat 13 Jun: Clear sky, 20/12 C, rain none expected, sun 04:49-21:19, moon New moon',
@@ -94,7 +94,7 @@ test('normalizes weather into compact display and PDF lines', () => {
 test('normalizes wttr.in fallback weather into the same display model', () => {
   const weather = normalizeWttrWeather(sampleWttr(), { dateIso: '2026-06-11' });
 
-  assert.equal(weather.locationLabel, 'Christchurch, England');
+  assert.equal(weather.locationLabel, 'Driftwood Park Weather Forecast');
   assert.equal(weather.attribution, 'Weather: wttr.in');
   assert.equal(weather.dateIso, '2026-06-11');
   assert.equal(weather.label, 'Partly cloudy');
@@ -107,7 +107,7 @@ test('normalizes wttr.in fallback weather into the same display model', () => {
   assert.deepEqual(weather.rainyPeriods, ['evening']);
   assert.equal(weather.sunLabel, 'Sunrise 04:47 / Sunset 21:20');
   assert.equal(weather.moonLabel, 'Moon: Waning Crescent');
-  assert.equal(weatherPdfLines(weather)[0], 'Christchurch weather');
+  assert.equal(weatherPdfLines(weather)[0], 'Driftwood Park Weather Forecast');
 });
 
 test('selects requested forecast date as the first display day', () => {

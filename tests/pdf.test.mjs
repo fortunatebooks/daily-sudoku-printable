@@ -77,7 +77,7 @@ test('builds an A4 Sudoku PDF with predictable filename', () => {
   assert.match(text, / 768 Tm \(Thursday, 11 June 2026\) Tj ET/);
   assert.match(text, /Puzzle 1/);
   assert.match(text, /medium/);
-  assert.match(text, /Weather for the garden/);
+  assert.match(text, /Driftwood Park Weather Forecast/);
   assert.match(text, /1\.9 w 36 524 m 36 728 l S/);
   assert.match(text, /0\.6 w 32 30 m 563 30 l S/);
   assert.match(text, /0\.6 w 32 282 m 563 282 l S/);
@@ -141,7 +141,7 @@ test('builds the two-puzzle graded print layout for current puzzles', () => {
   assert.match(text, /Very Difficult/);
   assert.match(text, /Puzzle 2/);
   assert.match(text, /Fiendish/);
-  assert.match(text, /Weather for the garden/);
+  assert.match(text, /Driftwood Park Weather Forecast/);
   assert.match(text, /1\.9 w 36 524 m 36 728 l S/);
   assert.match(text, /1\.9 w 36 296 m 36 500 l S/);
   assert.match(text, /0\.6 w 32 30 m 563 30 l S/);
@@ -239,7 +239,7 @@ test('builds the embedded-font server PDF without omitting TV listings', async (
             rainSummary: 'Mostly dry',
             windSummary: 'Light wind',
             wateringSummary: 'Water pots if soil is dry',
-            bestGardenTime: 'Best garden time: morning'
+            bestGardenTime: 'Best outside time: morning'
           }
         }
       ]

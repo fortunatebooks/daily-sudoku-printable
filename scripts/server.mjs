@@ -244,7 +244,7 @@ function unavailableWeather(dateIso) {
   return {
     unavailable: true,
     dateIso,
-    locationLabel: 'Christchurch, England',
+    locationLabel: 'Driftwood Park Weather Forecast',
     attribution: ''
   };
 }

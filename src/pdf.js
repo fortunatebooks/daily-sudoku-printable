@@ -210,11 +210,11 @@ function drawWeatherForecastPanel(operations, weather, fallbackLines, box, optio
   const top = y + height;
   const titleY = top - 17;
   drawWeatherIcon(operations, 'partly-cloudy', x + 16, titleY + 1, 10);
-  drawText(operations, 'Weather for the garden', x + 34, titleY - 3, FONT.sectionTitle, 'F2', 'left');
+  drawText(operations, 'Driftwood Park Weather Forecast', x + 34, titleY - 3, FONT.sectionTitle, 'F2', 'left');
   drawDottedLine(operations, x, top - 31, x + width, top - 31, 0.6, 3);
 
   if (!weather || weather.unavailable || !Array.isArray(weather.days) || weather.days.length === 0) {
-    const lines = fallbackLines.filter((line) => !/^Christchurch weather\b/i.test(line));
+    const lines = fallbackLines.filter((line) => !/^Driftwood Park Weather Forecast\b/i.test(line));
     drawTextBox(operations, {
       text: lines.length > 0 ? lines.join(' ') : 'Weather forecast unavailable',
       x: x + 8,
@@ -289,7 +289,7 @@ function drawTodayWeatherBox(operations, day, box, options) {
   drawDottedLine(operations, x + 10, y + 66, x + width - 10, y + 66, 0.4, 2.5);
   drawWeatherSummaryLine(operations, 'Rain', summary.rainSummary, x + 10, y + 52, width - 20, options);
   drawWeatherSummaryLine(operations, 'Wind', summary.windSummary, x + 10, y + 39, width - 20, options);
-  drawWeatherSummaryLine(operations, 'Garden', summary.wateringSummary, x + 10, y + 26, width - 20, options);
+  drawWeatherSummaryLine(operations, 'Outside', summary.wateringSummary, x + 10, y + 26, width - 20, options);
   if (daylight) {
     drawWeatherSummaryLine(operations, 'Daylight', daylight, x + 10, y + 13, width - 20, options);
   }

@@ -29,7 +29,7 @@ print layout.
 - Uses a weekend schedule of Fiendish plus Super Fiendish puzzles.
 - Grades puzzles with a custom human-style grader based on solving techniques,
   not just clue count.
-- Adds garden-friendly Christchurch, Dorset weather using Open-Meteo first,
+- Adds local Driftwood Park weather using Open-Meteo first,
   wttr.in second, and a stale cache as the last fallback.
 - Adds evening TV listings from Freely for BBC One South, BBC Two, ITV1,
   Channel 4, and 5, laid out as readable channel bands.
@@ -155,7 +155,7 @@ testing, and future solution/answer features.
 The current version is intentionally specific to Jenny:
 
 - Title: `Jenny's Sudoku`
-- Weather: Christchurch, Dorset
+- Weather: Driftwood Park / BH23 2GA
 - TV region/source: Freely, with a fixed set of UK channels
 - Timezone: `Europe/London`
 - Deployed domain: `jennysudoku.com`

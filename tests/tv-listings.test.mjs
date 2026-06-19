@@ -151,10 +151,20 @@ test('preserves feed-provided ellipsis in shortened programme titles', () => {
 
 test('expands shortened Freely titles from programme detail synopsis', async () => {
   const guide = sampleFreelyGuide();
-  guide.data.programs.find((channel) => channel.service_id === '38145').events.push({
+  const bbcOne = guide.data.programs.find((channel) => channel.service_id === '37123');
+  const channel4 = guide.data.programs.find((channel) => channel.service_id === '37889');
+  const channel5 = guide.data.programs.find((channel) => channel.service_id === '38145');
+  bbcOne.events = [];
+  channel4.events.push({
+    program_id: 'crid://example.test/amanda',
+    main_title: 'Our Farm Next Door: Amanda...',
+    start_time: '2026-06-11T18:00:00+0000',
+    duration: 'PT1H'
+  });
+  channel5.events.push({
     program_id: 'crid://example.test/soham',
     main_title: 'Soham: The Murder of Holly &...',
-    start_time: '2026-06-11T18:00:00+0000',
+    start_time: '2026-06-11T19:00:00+0000',
     duration: 'PT1H'
   });
   const requestedUrls = [];
@@ -162,6 +172,7 @@ test('expands shortened Freely titles from programme detail synopsis', async () 
     requestedUrls.push(String(url));
 
     if (String(url).includes('/program?')) {
+      const isAmanda = String(url).includes('amanda');
       return {
         ok: true,
         json: async () => ({
@@ -169,9 +180,11 @@ test('expands shortened Freely titles from programme detail synopsis', async () 
           data: {
             programs: [
               {
-                main_title: 'Soham: The Murder of Holly &...',
+                main_title: isAmanda ? 'Our Farm Next Door: Amanda...' : 'Soham: The Murder of Holly &...',
                 synopsis: {
-                  medium: '...Jessica. The brutal murders shocked the country.'
+                  medium: isAmanda
+                    ? '...Clive and Kids: The Owens continue to transform their farm.'
+                    : '...Jessica. The brutal murders shocked the country.'
                 }
               }
             ]
@@ -191,11 +204,15 @@ test('expands shortened Freely titles from programme detail synopsis', async () 
     fetchImpl,
     storage: null
   });
-  const title = listings.channels
-    .find((channel) => channel.serviceId === '38145')
+  const amandaTitle = listings.channels
+    .find((channel) => channel.serviceId === '37889')
     .programs.find((program) => program.startTime === '19:00')?.title;
+  const sohamTitle = listings.channels
+    .find((channel) => channel.serviceId === '38145')
+    .programs.find((program) => program.startTime === '20:00')?.title;
 
-  assert.equal(title, 'Soham: The Murder of Holly & Jessica');
+  assert.equal(amandaTitle, 'Our Farm Next Door: Amanda, Clive and Kids');
+  assert.equal(sohamTitle, 'Soham: The Murder of Holly & Jessica');
   assert.equal(requestedUrls.some((url) => url.includes('/program?')), true);
 });
 

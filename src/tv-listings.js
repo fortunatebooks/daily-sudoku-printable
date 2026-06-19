@@ -436,17 +436,40 @@ function expandEllipsizedTitleFromProgramDetail(title, detail) {
 
   const synopsis = synopsisText(detail?.synopsis);
   const prefix = cleanTitleValue.replace(/\s*\.{3}\s*$/, '').trim();
-  const continuationMatch = synopsis.match(/^\s*\.{3}\s*([^.!?]+)[.!?]/);
-  const continuation = cleanTitle(continuationMatch?.[1] || '');
+  const continuation = titleContinuationFromSynopsis(synopsis);
   const continuationWordCount = continuation ? continuation.split(/\s+/).length : 0;
 
   if (!prefix || !continuation || continuation.length > 45 || continuationWordCount > 7) {
     return null;
   }
 
-  const expanded = cleanTitle(`${prefix} ${continuation}`);
+  const expanded = cleanTitle(joinEllipsizedTitleParts(prefix, continuation));
 
   return expanded.length > prefix.length + 2 && !isEllipsizedTitle(expanded) ? expanded : null;
+}
+
+function titleContinuationFromSynopsis(synopsis) {
+  const cleanSynopsis = cleanTitle(synopsis);
+  const colonMatch = cleanSynopsis.match(/^\s*\.{3}\s*([^:]{2,45}):/);
+
+  if (colonMatch) {
+    return cleanTitle(colonMatch[1]);
+  }
+
+  const sentenceMatch = cleanSynopsis.match(/^\s*\.{3}\s*([^.!?]+)[.!?]/);
+  return cleanTitle(sentenceMatch?.[1] || '');
+}
+
+function joinEllipsizedTitleParts(prefix, continuation) {
+  if (/[&/:(['"]\s*$/.test(prefix) || /\b(?:a|an|and|at|by|for|from|in|of|on|or|the|to|with)\s*$/i.test(prefix)) {
+    return `${prefix} ${continuation}`;
+  }
+
+  if (/\band\b/i.test(continuation) && !/^and\b/i.test(continuation)) {
+    return `${prefix}, ${continuation}`;
+  }
+
+  return `${prefix} ${continuation}`;
 }
 
 function synopsisText(synopsis) {

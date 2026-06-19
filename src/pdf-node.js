@@ -328,8 +328,6 @@ function drawTodayWeather(doc, day, box) {
   const summary = weatherGardenSummary(day);
   const daylight = weatherDaylightSummary(day);
 
-  drawLine(doc, box.x, box.y, box.x + box.width, box.y, 0.45);
-  drawLine(doc, box.x, box.y + box.height, box.x + box.width, box.y + box.height, 0.45);
   doc.font(FONTS.sansBold).fontSize(12.2).text('TODAY', box.x + 8, box.y + 8, {
     width: 80
   });

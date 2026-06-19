@@ -149,6 +149,72 @@ test('preserves feed-provided ellipsis in shortened programme titles', () => {
   assert.equal(title, 'New: Build Your Dream Home in...');
 });
 
+test('adds useful subtitles from Freely guide data', () => {
+  const guide = sampleFreelyGuide();
+  const bbcOne = guide.data.programs.find((channel) => channel.service_id === '37123');
+  bbcOne.events = [
+    {
+      program_id: 'crid://example.test/world-cup',
+      main_title: 'FIFA World Cup 2026',
+      secondary_title: 'Group Stage: USA v Australia',
+      start_time: '2026-06-11T18:30:00+0000',
+      duration: 'PT3H'
+    }
+  ];
+
+  const listings = normalizeFreelyTvGuide(guide, { dateIso: '2026-06-11' });
+  const title = listings.channels[0].programs.find((program) => program.startTime === '19:30')?.title;
+
+  assert.equal(title, 'FIFA World Cup 2026: Group Stage: USA v Australia');
+});
+
+test('does not repeat a subtitle already present in the guide title', () => {
+  const guide = sampleFreelyGuide();
+  const bbcOne = guide.data.programs.find((channel) => channel.service_id === '37123');
+  bbcOne.events = [
+    {
+      program_id: 'crid://example.test/world-cup',
+      main_title: 'FIFA World Cup 2026: USA v Australia',
+      secondary_title: 'Group Stage: USA v Australia',
+      start_time: '2026-06-11T18:30:00+0000',
+      duration: 'PT3H'
+    }
+  ];
+
+  const listings = normalizeFreelyTvGuide(guide, { dateIso: '2026-06-11' });
+  const title = listings.channels[0].programs.find((program) => program.startTime === '19:30')?.title;
+
+  assert.equal(title, 'FIFA World Cup 2026: USA v Australia');
+});
+
+test('keeps named episode subtitles but drops mechanical date subtitles', () => {
+  const guide = sampleFreelyGuide();
+  const bbcOne = guide.data.programs.find((channel) => channel.service_id === '37123');
+  bbcOne.events = [
+    {
+      program_id: 'crid://example.test/the-one-show',
+      main_title: 'The One Show',
+      secondary_title: '19/06/2026',
+      start_time: '2026-06-11T18:00:00+0000',
+      duration: 'PT30M'
+    },
+    {
+      program_id: 'crid://example.test/changing-ends',
+      main_title: 'Changing Ends',
+      secondary_title: 'Series 3: 3. BBQ',
+      start_time: '2026-06-11T18:30:00+0000',
+      duration: 'PT30M'
+    }
+  ];
+
+  const listings = normalizeFreelyTvGuide(guide, { dateIso: '2026-06-11' });
+  const oneShowTitle = listings.channels[0].programs.find((program) => program.startTime === '19:00')?.title;
+  const changingEndsTitle = listings.channels[0].programs.find((program) => program.startTime === '19:30')?.title;
+
+  assert.equal(oneShowTitle, 'The One Show');
+  assert.equal(changingEndsTitle, 'Changing Ends: BBQ');
+});
+
 test('expands shortened Freely titles from programme detail synopsis', async () => {
   const guide = sampleFreelyGuide();
   const bbcOne = guide.data.programs.find((channel) => channel.service_id === '37123');
@@ -214,6 +280,50 @@ test('expands shortened Freely titles from programme detail synopsis', async () 
   assert.equal(amandaTitle, 'Our Farm Next Door: Amanda, Clive and Kids');
   assert.equal(sohamTitle, 'Soham: The Murder of Holly & Jessica');
   assert.equal(requestedUrls.some((url) => url.includes('/program?')), true);
+});
+
+test('adds useful subtitles from Freely programme detail data', async () => {
+  const guide = sampleFreelyGuide();
+  const bbcOne = guide.data.programs.find((channel) => channel.service_id === '37123');
+  bbcOne.events = [
+    {
+      program_id: 'crid://example.test/world-cup',
+      main_title: 'FIFA World Cup 2026',
+      start_time: '2026-06-11T18:30:00+0000',
+      duration: 'PT3H'
+    }
+  ];
+
+  const listings = await loadFreelyTvListings({
+    dateIso: '2026-06-11',
+    fetchImpl: async (url) => {
+      if (String(url).includes('/program?')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'success',
+            data: {
+              programs: [
+                {
+                  main_title: 'FIFA World Cup 2026',
+                  secondary_title: 'Group Stage: USA v Australia'
+                }
+              ]
+            }
+          })
+        };
+      }
+
+      return {
+        ok: true,
+        json: async () => guide
+      };
+    },
+    storage: null
+  });
+  const title = listings.channels[0].programs.find((program) => program.startTime === '19:30')?.title;
+
+  assert.equal(title, 'FIFA World Cup 2026: Group Stage: USA v Australia');
 });
 
 function sampleFreelyGuide() {

@@ -295,7 +295,9 @@ async function fetchServerTvListings(options = {}) {
 }
 
 function normalizeFreelyEvent(event) {
-  const title = cleanTitle(event?.main_title ?? event?.title ?? event?.name);
+  const mainTitle = cleanTitle(event?.main_title ?? event?.title ?? event?.name);
+  const secondaryTitle = cleanTitle(event?.secondary_title ?? event?.secondaryTitle ?? event?.subtitle);
+  const title = titleWithUsefulSecondaryTitle(mainTitle, secondaryTitle);
   const rawStartTime = event?.start_time ?? event?.startTime ?? event?.start;
   const rawDuration = event?.duration ?? event?.durationMs;
   const startMs = parseGuideTime(rawStartTime);
@@ -358,7 +360,7 @@ async function enrichEllipsizedFreelyTitles(listings, options = {}) {
     tasks.map(async ({ channel, program }) => {
       try {
         const detail = await fetchFreelyProgramDetails(channel, program, options);
-        const expanded = expandEllipsizedTitleFromProgramDetail(program.title, detail);
+        const expanded = expandedTitleFromProgramDetail(program.title, detail);
 
         if (expanded) {
           program.title = expanded;
@@ -380,7 +382,7 @@ function canFetchFreelyProgramDetails(channel, program) {
       detail?.programId &&
       detail?.rawStartTime &&
       detail?.duration &&
-      isEllipsizedTitle(program.title)
+      (isEllipsizedTitle(program.title) || titleCanUseDetailSubtitle(program.title))
   );
 }
 
@@ -422,6 +424,10 @@ async function fetchFreelyProgramDetails(channel, program, options = {}) {
   }
 }
 
+function expandedTitleFromProgramDetail(title, detail) {
+  return expandEllipsizedTitleFromProgramDetail(title, detail) || expandTitleFromProgramDetailSubtitle(title, detail);
+}
+
 function expandEllipsizedTitleFromProgramDetail(title, detail) {
   const cleanTitleValue = cleanTitle(title);
 
@@ -446,6 +452,93 @@ function expandEllipsizedTitleFromProgramDetail(title, detail) {
   const expanded = cleanTitle(joinEllipsizedTitleParts(prefix, continuation));
 
   return expanded.length > prefix.length + 2 && !isEllipsizedTitle(expanded) ? expanded : null;
+}
+
+function expandTitleFromProgramDetailSubtitle(title, detail) {
+  const cleanTitleValue = cleanTitle(title);
+
+  if (!titleCanUseDetailSubtitle(cleanTitleValue)) {
+    return null;
+  }
+
+  const secondaryTitle = cleanTitle(detail?.secondary_title ?? detail?.secondaryTitle ?? detail?.subtitle);
+  const expanded = titleWithUsefulSecondaryTitle(cleanTitleValue, secondaryTitle);
+
+  return expanded !== cleanTitleValue ? expanded : null;
+}
+
+function titleWithUsefulSecondaryTitle(title, secondaryTitle) {
+  const cleanTitleValue = cleanTitle(title);
+  const cleanSecondaryTitle = usefulSecondaryTitleForDisplay(cleanTitleValue, secondaryTitle);
+
+  if (!cleanTitleValue || !cleanSecondaryTitle) {
+    return cleanTitleValue;
+  }
+
+  return cleanTitle(`${cleanTitleValue}${cleanTitleValue.endsWith(':') ? ' ' : ': '}${cleanSecondaryTitle}`);
+}
+
+function usefulSecondaryTitleForDisplay(title, secondaryTitle) {
+  const cleanTitleValue = cleanTitle(title);
+  const cleanSecondaryTitle = meaningfulSecondaryTitle(secondaryTitle);
+
+  if (!cleanSecondaryTitle) {
+    return '';
+  }
+
+  const duplicateProbe = cleanTitle(
+    cleanSecondaryTitle.replace(/^(?:Group Stage|Round of \d+|Quarter[- ]final|Semi[- ]final|Final|Live)\s*:\s*/i, '')
+  );
+  const lowerTitle = cleanTitleValue.toLowerCase();
+
+  if (
+    lowerTitle.includes(cleanSecondaryTitle.toLowerCase()) ||
+    (duplicateProbe && lowerTitle.includes(duplicateProbe.toLowerCase()))
+  ) {
+    return '';
+  }
+
+  return cleanSecondaryTitle;
+}
+
+function meaningfulSecondaryTitle(secondaryTitle) {
+  const cleanSecondaryTitle = cleanTitle(secondaryTitle);
+
+  if (!cleanSecondaryTitle || isMechanicalSubtitle(cleanSecondaryTitle)) {
+    return '';
+  }
+
+  const namedEpisodeMatch = cleanSecondaryTitle.match(/^Series \d+\s*:\s*\d+\.\s*(.+)$/i);
+  if (namedEpisodeMatch) {
+    const episodeTitle = cleanTitle(namedEpisodeMatch[1]);
+    return isMechanicalSubtitle(episodeTitle) ? '' : episodeTitle;
+  }
+
+  const datedEpisodeMatch = cleanSecondaryTitle.match(/^20\d{2}\s*:\s*\d+\.\s*(.+)$/i);
+  if (datedEpisodeMatch) {
+    const episodeTitle = cleanTitle(datedEpisodeMatch[1]);
+    return isMechanicalSubtitle(episodeTitle) ? '' : episodeTitle;
+  }
+
+  return cleanSecondaryTitle;
+}
+
+function isMechanicalSubtitle(value) {
+  const text = cleanTitle(value);
+
+  return (
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(text) ||
+    /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)(?:day)?\s+\d{1,2}\s+[A-Z][a-z]{2,8}$/i.test(text) ||
+    /^20\d{2}\s*:\s*Episode \d+$/i.test(text) ||
+    /^Series \d+\s*:\s*Episode \d+$/i.test(text) ||
+    /^Episode \d+$/i.test(text)
+  );
+}
+
+function titleCanUseDetailSubtitle(title) {
+  const cleanTitleValue = cleanTitle(title);
+
+  return Boolean(cleanTitleValue && !cleanTitleValue.includes(':') && !isEllipsizedTitle(cleanTitleValue));
 }
 
 function titleContinuationFromSynopsis(synopsis) {

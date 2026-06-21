@@ -186,6 +186,8 @@ button {
   font-size: clamp(1.35rem, 4.1vw, 2.5rem);
   font-weight: 700;
   line-height: 0.9;
+  cursor: pointer;
+  user-select: none;
 }
 
 .sudoku-cell:nth-child(3n) {
@@ -209,6 +211,64 @@ button {
 
 .sudoku-cell.is-empty {
   color: transparent;
+}
+
+.sudoku-cell.is-selected {
+  background-color: #bbdefb;
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.sudoku-cell.is-user-entered {
+  color: #2563eb;
+}
+
+.sudoku-cell.is-conflict {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.learning-actions {
+  width: min(100%, 520px);
+  margin: 16px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.keypad-btn {
+  min-height: 48px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--ink);
+  transition: all 0.2s;
+}
+
+.keypad-btn:hover {
+  background: #f1f5f9;
+}
+
+.keypad-btn:active {
+  background: #e2e8f0;
+}
+
+.keypad-clear {
+  grid-column: span 5;
+}
+
+.game-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .primary-actions {

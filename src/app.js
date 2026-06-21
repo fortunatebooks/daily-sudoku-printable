@@ -1,5 +1,5 @@
 import { buildSudokuPdf, sudokuPdfFilename } from './pdf.js';
-import { generateDailySudoku } from './sudoku.js';
+import { generateDailySudoku, gradeSudokuPuzzle } from './sudoku.js';
 import { getCachedWeather, loadWeather } from './weather.js';
 import {
   formatTvDisplayTime,
@@ -12,6 +12,9 @@ const appState = {
   route: null,
   puzzle: null,
   cells: Array(81).fill(null),
+  userCells: Array(81).fill(null),
+  selectedCell: null,
+  cellElements: [],
   puzzleEntries: [],
   weather: null,
   weatherRouteKey: '',
@@ -35,7 +38,10 @@ const elements = {
   historyDialog: document.querySelector('#historyDialog'),
   historyList: document.querySelector('#historyList'),
   weather: document.querySelector('#weatherWidget'),
-  tvListings: document.querySelector('#tvListingsWidget')
+  tvListings: document.querySelector('#tvListingsWidget'),
+  keypad: document.querySelector('#keypad'),
+  hintButton: document.querySelector('#hintButton'),
+  restartButton: document.querySelector('#restartButton')
 };
 
 const formatDisplayDate = new Intl.DateTimeFormat('en-GB', {
@@ -87,6 +93,50 @@ function init() {
     downloadCurrentPdf();
   });
 
+  elements.keypad?.addEventListener('click', (event) => {
+    if (event.target.matches('.keypad-btn')) {
+      handleInput(event.target.dataset.key);
+    }
+  });
+
+  elements.hintButton?.addEventListener('click', () => {
+    handleHint();
+  });
+
+  elements.restartButton?.addEventListener('click', () => {
+    if (appState.route?.dateIso) {
+      localStorage.removeItem(`sudoku-${appState.route.dateIso}`);
+      appState.userCells = Array(81).fill(null);
+      updateGridDisplay();
+      setStatus('Puzzle restarted.');
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (appState.selectedCell === null) return;
+    const i = appState.selectedCell;
+    const row = Math.floor(i / 9);
+    const col = i % 9;
+    
+    if (e.key >= '1' && e.key <= '9') {
+      handleInput(e.key);
+    } else if (e.key === 'Backspace' || e.key === 'Delete') {
+      handleInput('Clear');
+    } else if (e.key === 'ArrowUp') {
+      selectCell((row > 0 ? row - 1 : 8) * 9 + col);
+      e.preventDefault();
+    } else if (e.key === 'ArrowDown') {
+      selectCell((row < 8 ? row + 1 : 0) * 9 + col);
+      e.preventDefault();
+    } else if (e.key === 'ArrowLeft') {
+      selectCell(row * 9 + (col > 0 ? col - 1 : 8));
+      e.preventDefault();
+    } else if (e.key === 'ArrowRight') {
+      selectCell(row * 9 + (col < 8 ? col + 1 : 0));
+      e.preventDefault();
+    }
+  });
+
   window.addEventListener('popstate', () => {
     renderRoute();
   });
@@ -117,11 +167,26 @@ async function renderRoute() {
     appState.puzzle = await loadPuzzle(route.dateIso);
     appState.puzzleEntries = normalisePuzzleEntries(appState.puzzle);
     appState.cells = appState.puzzleEntries[0]?.cells || Array(81).fill(null);
+
+    const savedState = localStorage.getItem(`sudoku-${route.dateIso}`);
+    if (savedState) {
+      try {
+        appState.userCells = JSON.parse(savedState);
+      } catch (e) {
+        appState.userCells = Array(81).fill(null);
+      }
+    } else {
+      appState.userCells = Array(81).fill(null);
+    }
+    appState.selectedCell = null;
+
     renderPuzzleEntries(appState.puzzleEntries);
+    updateGridDisplay();
     setStatus('');
   } catch (error) {
     appState.puzzle = null;
     appState.cells = Array(81).fill(null);
+    appState.userCells = Array(81).fill(null);
     appState.puzzleEntries = [];
     renderPuzzleEntries(emptyPuzzleEntries());
     setStatus(errorMessage(error), true);
@@ -204,13 +269,14 @@ function renderDate(dateIso) {
 function renderEmptyGrid() {
   appState.puzzleEntries = [];
   appState.cells = Array(81).fill(null);
+  appState.userCells = Array(81).fill(null);
   renderPuzzleEntries(emptyPuzzleEntries());
 }
 
 function renderPuzzleEntries(entries) {
   const fragment = document.createDocumentFragment();
 
-  entries.forEach((entry) => {
+  entries.forEach((entry, index) => {
     const card = document.createElement('article');
     card.className = 'puzzle-card';
     card.setAttribute('aria-labelledby', `puzzle-${entry.number}-label`);
@@ -225,7 +291,8 @@ function renderPuzzleEntries(entries) {
     );
 
     const grid = renderGrid(entry.cells, {
-      label: `Puzzle ${entry.number} - ${entry.label || 'Sudoku'}`
+      label: `Puzzle ${entry.number} - ${entry.label || 'Sudoku'}`,
+      isMain: index === 0
     });
 
     card.append(heading, grid);
@@ -242,11 +309,24 @@ function renderGrid(cells, options = {}) {
   grid.setAttribute('role', 'grid');
   grid.setAttribute('aria-label', options.label || 'Sudoku puzzle');
 
+  if (options.isMain) {
+    appState.cellElements = [];
+  }
+
   cells.forEach((value, index) => {
     const cell = document.createElement('div');
     cell.className = 'sudoku-cell';
     cell.setAttribute('role', 'gridcell');
     cell.setAttribute('aria-label', cellLabel(index, value));
+    
+    if (options.isMain) {
+      cell.setAttribute('tabindex', '0');
+      appState.cellElements.push(cell);
+      cell.addEventListener('click', () => {
+        selectCell(index);
+      });
+    }
+
     if (value == null || value === '') {
       cell.classList.add('is-empty');
       cell.textContent = '';
@@ -1059,3 +1139,141 @@ function weatherDayLabel(dateIso) {
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
+
+function selectCell(index) {
+  appState.selectedCell = index;
+  updateGridDisplay();
+  if (appState.cellElements && appState.cellElements[index]) {
+    appState.cellElements[index].focus();
+  }
+}
+
+function updateGridDisplay() {
+  if (!appState.cellElements || appState.cellElements.length === 0) return;
+  
+  const conflicts = getGridConflicts(appState.cells, appState.userCells);
+  
+  appState.cellElements.forEach((cell, index) => {
+    const given = appState.cells[index];
+    const user = appState.userCells[index];
+    
+    cell.classList.remove('is-empty', 'is-selected', 'is-user-entered', 'is-conflict');
+    
+    if (index === appState.selectedCell) {
+       cell.classList.add('is-selected');
+    }
+    
+    if (conflicts.has(index)) {
+       cell.classList.add('is-conflict');
+    }
+    
+    if (given !== null && given !== 0 && given !== '') {
+       cell.textContent = String(given);
+       cell.setAttribute('aria-label', cellLabel(index, given));
+    } else if (user !== null && user !== 0 && user !== '') {
+       cell.classList.add('is-user-entered');
+       cell.textContent = String(user);
+       cell.setAttribute('aria-label', cellLabel(index, user));
+    } else {
+       cell.classList.add('is-empty');
+       cell.textContent = '';
+       cell.setAttribute('aria-label', cellLabel(index, null));
+    }
+  });
+}
+
+function getGridConflicts(givens, userInputs) {
+   const conflicts = new Set();
+   const combined = givens.map((g, i) => (g !== null && g !== 0 && g !== '') ? g : (userInputs[i] || 0));
+   
+   for (let i = 0; i < 81; i++) {
+      const val = combined[i];
+      if (!val) continue;
+      
+      const row = Math.floor(i / 9);
+      const col = i % 9;
+      const box = Math.floor(row / 3) * 3 + Math.floor(col / 3);
+      
+      for (let j = 0; j < 81; j++) {
+         if (i === j) continue;
+         const jVal = combined[j];
+         if (jVal === val) {
+             const jRow = Math.floor(j / 9);
+             const jCol = j % 9;
+             const jBox = Math.floor(jRow / 3) * 3 + Math.floor(jCol / 3);
+             
+             if (row === jRow || col === jCol || box === jBox) {
+                 conflicts.add(i);
+                 conflicts.add(j);
+             }
+         }
+      }
+   }
+   return conflicts;
+}
+
+function handleInput(val) {
+   if (appState.selectedCell === null) return;
+   const index = appState.selectedCell;
+   const given = appState.cells[index];
+   if (given !== null && given !== 0 && given !== '') return;
+   
+   if (val === 'Backspace' || val === 'Clear' || val === 'Delete') {
+       appState.userCells[index] = null;
+   } else {
+       appState.userCells[index] = Number(val);
+   }
+   
+   if (appState.route && appState.route.dateIso) {
+       localStorage.setItem(`sudoku-${appState.route.dateIso}`, JSON.stringify(appState.userCells));
+   }
+   
+   updateGridDisplay();
+}
+
+function handleHint() {
+    const combined = appState.cells.map((g, i) => {
+        if (g !== null && g !== 0 && g !== '') return String(g);
+        const u = appState.userCells[i];
+        if (u) return String(u);
+        return '0';
+    }).join('');
+    
+    const result = gradeSudokuPuzzle(combined);
+    if (result.invalid) {
+        setStatus("Cannot provide hint: Grid contains conflicts.", true);
+        return;
+    }
+    
+    if (result.solved) {
+        setStatus("Puzzle is already solved!");
+        return;
+    }
+    
+    if (result.steps && result.steps.length > 0) {
+        const step = result.steps[0];
+        let msg = `Hint: Use ${formatTechnique(step.technique)}`;
+        
+        let targetCell = -1;
+        if (step.placements && step.placements.length > 0) {
+            targetCell = step.placements[0].index;
+            msg += ` at R${Math.floor(targetCell/9)+1}C${(targetCell%9)+1} (value ${step.placements[0].digit}).`;
+        } else if (step.digit) {
+            msg += ` for digit ${step.digit}.`;
+        }
+        
+        setStatus(msg);
+        
+        if (targetCell !== -1) {
+            selectCell(targetCell);
+        }
+    } else {
+        setStatus("No straightforward hint available. Try guessing.");
+    }
+}
+
+function formatTechnique(t) {
+    if (!t) return 'Unknown technique';
+    return t.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
